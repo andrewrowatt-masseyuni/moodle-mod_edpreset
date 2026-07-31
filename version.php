@@ -26,7 +26,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'mod_edpreset';
 $plugin->release = '0.1.0';
-$plugin->version = 2026073100;
+$plugin->version = 2026073101;
 $plugin->requires = 2024100700;
 // Pinned to 4.5 deliberately: this plugin depends on the legacy get_course_content_items
 // callback, which Moodle has been migrating to the hook API. Do not widen this without

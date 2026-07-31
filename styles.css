@@ -1,0 +1,12 @@
+.optioninfo a:has(.mod_edpreset-icon) {
+    position: relative;
+
+    &::after {
+        content: "\f15c";
+        font-family: "Font Awesome 6 Free";
+        font-weight: 100;
+        position: absolute;
+        right: calc(50% - 27px);
+        color: #0007;
+    }
+}

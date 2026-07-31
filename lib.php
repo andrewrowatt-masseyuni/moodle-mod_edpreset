@@ -145,3 +145,59 @@ function mod_edpreset_get_course_content_items($defaultmodulecontentitem, $user,
 function mod_edpreset_get_all_content_items($defaultmodulecontentitem) {
     return \mod_edpreset\local\chooser::get_all_content_items();
 }
+
+/**
+ * Serve images embedded in a preset's description.
+ *
+ * This is a deliberate publication decision, and the only one this plugin makes. A preset's
+ * description is shown to every user who can add an activity in any course, none of whom
+ * necessarily have access to the template course the description came from, so its images are
+ * copied to system context at bake time and served from here.
+ *
+ * Only that area is served. The stored activity backups deliberately have no branch here, so no
+ * URL reaches them.
+ *
+ * @param stdClass $course Unused; these files live at system context.
+ * @param stdClass $cm Unused.
+ * @param context $context The context the file was requested against.
+ * @param string $filearea The file area.
+ * @param array $args Item id followed by the file path.
+ * @param bool $forcedownload Whether to force download.
+ * @param array $options Additional serving options.
+ * @return bool False if the file could not be served.
+ */
+function edpreset_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = []) {
+    if ($filearea !== \mod_edpreset\preset::FILEAREA_HELP) {
+        return false;
+    }
+    if ($context->contextlevel !== CONTEXT_SYSTEM) {
+        return false;
+    }
+    if (!get_config('mod_edpreset', 'enabled')) {
+        return false;
+    }
+
+    require_login();
+    if (isguestuser()) {
+        return false;
+    }
+
+    $itemid = (int)array_shift($args);
+    $filename = array_pop($args);
+    $filepath = $args ? '/' . implode('/', $args) . '/' : '/';
+
+    $file = get_file_storage()->get_file(
+        $context->id,
+        'mod_edpreset',
+        \mod_edpreset\preset::FILEAREA_HELP,
+        $itemid,
+        $filepath,
+        $filename
+    );
+
+    if (!$file || $file->is_directory()) {
+        return false;
+    }
+
+    send_stored_file($file, HOURSECS, 0, $forcedownload, $options);
+}

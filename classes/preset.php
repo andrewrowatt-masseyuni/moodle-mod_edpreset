@@ -48,6 +48,9 @@ class preset extends persistent {
     /** @var string File area holding the archive currently being validated. */
     public const FILEAREA_STAGING = 'presetstaging';
 
+    /** @var string File area holding the untouched backup, used if a scrub breaks the restore. */
+    public const FILEAREA_UNSCRUBBED = 'presetunscrubbed';
+
     /** @var string File area holding the validated, live archive the chooser offers. */
     public const FILEAREA_BACKUP = 'presetbackup';
 
@@ -131,6 +134,15 @@ class preset extends persistent {
      */
     public function get_staging_file() {
         return $this->get_file(self::FILEAREA_STAGING);
+    }
+
+    /**
+     * Get the untouched backup kept as a fallback in case a scrub rule broke the restore.
+     *
+     * @return stored_file|false
+     */
+    public function get_unscrubbed_file() {
+        return $this->get_file(self::FILEAREA_UNSCRUBBED);
     }
 
     /**

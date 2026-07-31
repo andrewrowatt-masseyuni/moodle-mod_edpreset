@@ -24,6 +24,15 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+// Added before $settings, which core appends to 'modsettings' after this file is included, so the
+// management page appears above the settings page rather than below it.
+$ADMIN->add('modsettings', new admin_externalpage(
+    'modsettingedpresetmanage',
+    get_string('managepresets', 'mod_edpreset'),
+    new moodle_url('/mod/edpreset/manage.php'),
+    'moodle/site:config'
+));
+
 if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'mod_edpreset/enabled',
@@ -53,5 +62,42 @@ if ($ADMIN->fulltree) {
         get_string('settings:maxpresets_desc', 'mod_edpreset'),
         100,
         PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'mod_edpreset/maxbackupsize',
+        get_string('settings:maxbackupsize', 'mod_edpreset'),
+        get_string('settings:maxbackupsize_desc', 'mod_edpreset'),
+        104857600,
+        PARAM_INT
+    ));
+
+    $settings->add(new admin_setting_configtextarea(
+        'mod_edpreset/datefields',
+        get_string('settings:datefields', 'mod_edpreset'),
+        get_string('settings:datefields_desc', 'mod_edpreset'),
+        '',
+        PARAM_RAW
+    ));
+
+    $settings->add(new admin_setting_heading(
+        'mod_edpreset/sandboxheading',
+        get_string('settings:sandboxheading', 'mod_edpreset'),
+        get_string('settings:sandboxheading_desc', 'mod_edpreset')
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'mod_edpreset/sandboxshortname',
+        get_string('settings:sandboxshortname', 'mod_edpreset'),
+        get_string('settings:sandboxshortname_desc', 'mod_edpreset'),
+        \mod_edpreset\local\sandbox::DEFAULT_SHORTNAME,
+        PARAM_TEXT
+    ));
+
+    $settings->add(new admin_settings_coursecat_select(
+        'mod_edpreset/sandboxcategoryid',
+        get_string('settings:sandboxcategoryid', 'mod_edpreset'),
+        get_string('settings:sandboxcategoryid_desc', 'mod_edpreset'),
+        0
     ));
 }

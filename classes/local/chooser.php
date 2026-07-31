@@ -199,7 +199,7 @@ class chooser {
             $preset->get('icon'),
             '',
             $modname,
-            ['class' => "activityicon $iconclass"]
+            ['class' => "mod_edpreset-icon activityicon $iconclass"]
         );
     }
 }

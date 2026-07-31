@@ -15,19 +15,25 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Filter post install hook
+ * Scheduled tasks for the activity preset provider.
  *
- * @package    filter_faultreporting
+ * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-/**
- * Switches the filter on, as it does nothing until a {faultreport} shortcode is used
- */
-function xmldb_filter_faultreporting_install() {
-    global $CFG;
-    require_once("$CFG->libdir/filterlib.php");
+defined('MOODLE_INTERNAL') || die();
 
-    filter_set_global_state('faultreporting', TEXTFILTER_ON);
-}
+$tasks = [
+    [
+        // Runs overnight because it re-bakes every exemplar; the event observers keep things
+        // current during the day.
+        'classname' => 'mod_edpreset\task\reconcile_presets',
+        'blocking' => 0,
+        'minute' => 'R',
+        'hour' => '3',
+        'day' => '*',
+        'dayofweek' => '*',
+        'month' => '*',
+    ],
+];

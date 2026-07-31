@@ -1,0 +1,191 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/manage_page
+
+    Preset activity management page.
+
+    Context variables required for this template:
+    * configured - Whether a template course is set and still exists
+    * enabled - Whether the plugin is switched on
+    * templatecoursename - Name of the template course
+    * templatecourseurl - Link to the template course
+    * sandboxshortname - Short name of the restore test course
+    * sandboxexists - Whether the restore test course currently exists
+    * sandboxurl - Link to the restore test course
+    * manageurl - This page
+    * sesskey - Session key for the action buttons
+    * haspresets - Whether there is anything to list
+    * livecount - How many presets are being offered
+    * totalcount - How many presets exist
+    * presets - Array of preset rows
+    * hassuggestions - Whether there are uncovered date fields to report
+    * suggestions - Array of {modname, fields}
+
+    Example context (json):
+    {
+        "configured": true,
+        "enabled": true,
+        "templatecoursename": "Activity templates",
+        "templatecourseurl": "#",
+        "sandboxshortname": "edpreset_restore_test",
+        "sandboxexists": true,
+        "sandboxurl": "#",
+        "manageurl": "#",
+        "sesskey": "abc123",
+        "haspresets": true,
+        "livecount": 1,
+        "totalcount": 1,
+        "presets": [
+            {
+                "id": 1,
+                "title": "Reflective journal",
+                "modulename": "Assignment",
+                "modname": "assign",
+                "category": "Formative assessment",
+                "sectionnum": 1,
+                "status": "ready",
+                "statuslabel": "Offered",
+                "statusclass": "success",
+                "statusdetail": "",
+                "islive": true,
+                "datescleared": "clear_dates: duedate",
+                "backupsize": "12.3KB",
+                "validated": "1 Jan 2026, 03:00"
+            }
+        ],
+        "hassuggestions": false,
+        "suggestions": []
+    }
+}}
+{{#configured}}
+    <p>
+        {{#str}} manage:templateis, mod_edpreset {{/str}}
+        <a href="{{templatecourseurl}}">{{templatecoursename}}</a>.
+        {{#str}} manage:sectionzeroignored, mod_edpreset {{/str}}
+    </p>
+{{/configured}}
+{{^configured}}
+    <div class="alert alert-warning" role="alert">
+        {{#str}} manage:notconfigured, mod_edpreset {{/str}}
+        <a href="{{settingsurl}}">{{#str}} manage:gotosettings, mod_edpreset {{/str}}</a>
+    </div>
+{{/configured}}
+
+{{#configured}}
+    <div class="mb-3">
+        <form method="post" action="{{manageurl}}" class="d-inline-block mr-2">
+            <input type="hidden" name="sesskey" value="{{sesskey}}">
+            <input type="hidden" name="action" value="rebuild">
+            <button type="submit" class="btn btn-secondary">
+                {{#str}} manage:rebuild, mod_edpreset {{/str}}
+            </button>
+        </form>
+        <form method="post" action="{{manageurl}}" class="d-inline-block">
+            <input type="hidden" name="sesskey" value="{{sesskey}}">
+            <input type="hidden" name="action" value="clearcache">
+            <button type="submit" class="btn btn-outline-danger"
+                    data-confirm="{{#str}} manage:clearcacheconfirm, mod_edpreset {{/str}}">
+                {{#str}} manage:clearcache, mod_edpreset {{/str}}
+            </button>
+        </form>
+        <p class="text-muted small mt-2 mb-0">
+            {{#str}} manage:actionsqueued, mod_edpreset {{/str}}
+        </p>
+    </div>
+
+    <p>
+        {{#str}} manage:offeredcount, mod_edpreset, {"live": "{{livecount}}", "total": "{{totalcount}}"} {{/str}}
+        {{#sandboxexists}}
+            {{#str}} manage:sandboxis, mod_edpreset {{/str}}
+            <a href="{{sandboxurl}}">{{sandboxshortname}}</a>.
+        {{/sandboxexists}}
+        {{^sandboxexists}}
+            {{#str}} manage:sandboxmissing, mod_edpreset, {{sandboxshortname}} {{/str}}
+        {{/sandboxexists}}
+    </p>
+{{/configured}}
+
+{{#haspresets}}
+    <div class="table-responsive">
+        <table class="table table-sm generaltable">
+            <caption class="sr-only">{{#str}} manage:tablecaption, mod_edpreset {{/str}}</caption>
+            <thead>
+                <tr>
+                    <th scope="col">{{#str}} manage:col:preset, mod_edpreset {{/str}}</th>
+                    <th scope="col">{{#str}} manage:col:type, mod_edpreset {{/str}}</th>
+                    <th scope="col">{{#str}} manage:col:category, mod_edpreset {{/str}}</th>
+                    <th scope="col">{{#str}} manage:col:status, mod_edpreset {{/str}}</th>
+                    <th scope="col">{{#str}} manage:col:dates, mod_edpreset {{/str}}</th>
+                    <th scope="col">{{#str}} manage:col:backup, mod_edpreset {{/str}}</th>
+                    <th scope="col"><span class="sr-only">{{#str}} manage:col:actions, mod_edpreset {{/str}}</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#presets}}
+                    <tr>
+                        <th scope="row" class="font-weight-normal">{{title}}</th>
+                        <td>{{modulename}}</td>
+                        <td>{{category}}</td>
+                        <td>
+                            <span class="badge badge-{{statusclass}}">{{statuslabel}}</span>
+                            {{#islive}}
+                                <span class="badge badge-info">{{#str}} manage:inchooser, mod_edpreset {{/str}}</span>
+                            {{/islive}}
+                            {{#statusdetail}}
+                                <div class="text-muted small">{{statusdetail}}</div>
+                            {{/statusdetail}}
+                        </td>
+                        <td class="small">{{datescleared}}</td>
+                        <td class="small">
+                            {{backupsize}}
+                            {{#validated}}<div class="text-muted">{{validated}}</div>{{/validated}}
+                        </td>
+                        <td>
+                            <form method="post" action="{{manageurl}}">
+                                <input type="hidden" name="sesskey" value="{{sesskey}}">
+                                <input type="hidden" name="action" value="rebake">
+                                <input type="hidden" name="preset" value="{{id}}">
+                                <button type="submit" class="btn btn-sm btn-link p-0">
+                                    {{#str}} manage:rebake, mod_edpreset {{/str}}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                {{/presets}}
+            </tbody>
+        </table>
+    </div>
+{{/haspresets}}
+
+{{#configured}}
+    {{^haspresets}}
+        <div class="alert alert-info" role="alert">
+            {{#str}} manage:nopresets, mod_edpreset {{/str}}
+        </div>
+    {{/haspresets}}
+{{/configured}}
+
+{{#hassuggestions}}
+    <h3>{{#str}} manage:suggestionsheading, mod_edpreset {{/str}}</h3>
+    <p>{{#str}} manage:suggestionsintro, mod_edpreset {{/str}}</p>
+    <ul>
+        {{#suggestions}}
+            <li><code>{{modname}}</code>: {{fields}}</li>
+        {{/suggestions}}
+    </ul>
+{{/hassuggestions}}

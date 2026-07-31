@@ -14,16 +14,37 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace mod_edpreset\task;
+
+use core\task\adhoc_task;
+use mod_edpreset\local\baker;
+
 /**
- * English language pack for Fault reporting
+ * Rescan the whole template course.
  *
- * @package    filter_faultreporting
- * @category   string
+ * Only queues per-activity bakes; it does not run them, so this task stays quick however large the
+ * template course is.
+ *
+ * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class rebuild_presets extends adhoc_task {
 
-defined('MOODLE_INTERNAL') || die();
+    #[\Override]
+    public function get_name(): string {
+        return get_string('task:rebuildpresets', 'mod_edpreset');
+    }
 
-$string['filtername'] = 'Fault reporting';
-$string['privacy:metadata'] = 'The Fault reporting plugin doesn\'t store any personal data.';
+    #[\Override]
+    public function execute(): void {
+        $result = baker::rebuild();
+
+        mtrace(sprintf(
+            'mod_edpreset: %d exemplars scanned, %d bakes queued, %d presets removed.',
+            $result['scanned'],
+            $result['queued'],
+            $result['removed']
+        ));
+    }
+}
