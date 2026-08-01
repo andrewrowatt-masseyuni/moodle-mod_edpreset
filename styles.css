@@ -327,3 +327,13 @@
         font-weight: 400;
     }
 }
+
+#page-mod-edpreset-chooser {
+    #page {
+        padding-bottom: 5em;
+    }
+
+    footer {
+        display: none;
+    }
+}
