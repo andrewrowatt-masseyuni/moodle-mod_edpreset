@@ -1,0 +1,287 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the edpresets.json format
+    "version": "2.0.0",
+    "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+    },
+    "options": {
+        "env": {
+            "COMPOSE_PROJECT_NAME": "moodle405_mod_edpreset",
+            "MOODLE_DOCKER_WWWROOT": "/home/arowatt/moodle405_mod_edpreset",
+            "MOODLE_DOCKER_DB": "pgsql"
+        }
+    },
+    "edpresets": [
+        {
+            "label": "Run PHP Lint",
+            "type": "shell",
+            "command": "../moodle-plugin-ci/bin/moodle-plugin-ci phplint ./mod/edpreset",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset"
+            }
+        },
+        {
+            "label": "Run PHP Mess Detector",
+            "type": "shell",
+            "command": "../moodle-plugin-ci/bin/moodle-plugin-ci phpmd ./mod/edpreset",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset"
+            }
+        },
+        {
+            "label": "Run Mustache Lint",
+            "type": "shell",
+            "command": "../moodle-plugin-ci/bin/moodle-plugin-ci mustache ./mod/edpreset",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset"
+            }
+        },
+        {
+            "label": "Run Grunt AMD",
+            "type": "shell",
+            "command": "grunt --max-lint-warnings=0 amd",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset/mod/edpreset"
+            }
+        },
+        {
+            "label": "Run Grunt YUI",
+            "type": "shell",
+            "command": "grunt --max-lint-warnings=0 yui",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset/mod/edpreset"
+            }
+        },
+        {
+            "label": "Run Grunt Gherkin (behat) Lint",
+            "type": "shell",
+            "command": "grunt --max-lint-warnings=0 gherkinlint",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset/mod/edpreset"
+            }
+        },
+        {
+            "label": "Run Grunt Stylelint",
+            "type": "shell",
+            "command": "grunt --max-lint-warnings=0 stylelint",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset/mod/edpreset"
+            }
+        },
+        {
+            "label": "Run PHP Code Beautifier and Fixer (phpcbf)",
+            "type": "shell",
+            "command": "../moodle-plugin-ci/bin/moodle-plugin-ci phpcbf ./mod/edpreset",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset"
+            }
+        },
+        {
+            "label": "Run PHP CodeSniffer (phpcs)",
+            "type": "shell",
+            "command": "../moodle-plugin-ci/bin/moodle-plugin-ci phpcs ./mod/edpreset",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset"
+            }
+        },
+        {
+            "label": "Run PHPDoc checker",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php local/moodlecheck/cli/moodlecheck.php -p=mod/edpreset -f=text | tee /dev/stderr | grep -vz error",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run phpunit",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver vendor/bin/phpunit mod/edpreset/tests/. --test-suffix=_test.php",
+            "group": "test",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run phpunit - privacy",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver vendor/bin/phpunit privacy/tests/privacy/provider_test.php",
+            "group": "test",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run behat tests",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec -u www-data webserver php admin/tool/behat/cli/run.php --tags=@mod_edpreset --format progress --format moodle_screenshot",
+            "group": "test",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run all tests",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Run PHP Lint",
+                "Run PHP Mess Detector",
+                "Run Mustache Lint",
+                "Run PHP Code Beautifier and Fixer (phpcbf)",
+                "Run PHP CodeSniffer (phpcs)",
+                "Run PHPDoc checker",
+                "Run Grunt AMD",
+                "Run Grunt YUI",
+                "Run Grunt Stylelint",
+                "Run Grunt Gherkin (behat) Lint",
+                "Run phpunit",
+                "Run behat tests",
+                "Run phpunit - privacy"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Run all UNUSED tests",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Run PHP Lint",
+                "Run PHP Mess Detector",
+                "Run Mustache Lint",
+                "Run PHP Code Beautifier and Fixer (phpcbf)",
+                "Run PHP CodeSniffer (phpcs)",
+                "Run PHPDoc checker",
+                "Run Grunt AMD",
+                "Run Grunt YUI",
+                "Run Grunt Stylelint",
+                "Run Grunt Gherkin (behat) Lint",
+                "Run phpunit",
+                "Run behat tests",
+                "Run phpunit - privacy"
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Run phpunit-init",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/tool/phpunit/cli/init.php",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "group": "build"
+        },
+        {
+            "label": "Run behat-init",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/tool/behat/cli/init.php",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "group": "build"
+        },
+        {
+            "label": "Init all tests",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Run phpunit-init",
+                "Run behat-init"
+            ],
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Uninstall plugin",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/uninstall_plugins.php --plugins=mod_edpreset --run",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Install plugin (via Moodle upgrade)",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/upgrade.php --non-interactive --verbose-settings",
+            "group": "none",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Reinstall plugin",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/uninstall_plugins.php --plugins=mod_edpreset --run && /home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/upgrade.php --non-interactive --verbose-settings",
+            "group": "none",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Purge cache",
+            "type": "shell",
+            "command": "/home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/purge_caches.php",
+            "group": "none",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Run grunt AMD & Purge cache",
+            "type": "shell",
+            "command": "grunt amd && /home/arowatt/moodle-docker/bin/moodle-docker-compose exec webserver php admin/cli/purge_caches.php",
+            "group": "none",
+            "presentation": {
+                "panel": "dedicated"
+            },
+            "options": {
+                "cwd": "/home/arowatt/moodle405_mod_edpreset/mod/edpreset"
+            },
+            "problemMatcher": []
+        }
+    ]
+}
