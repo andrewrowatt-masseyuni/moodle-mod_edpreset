@@ -123,9 +123,7 @@ class chooser_page implements renderable, templatable {
         $data->sesskey = sesskey();
         $data->alltags = $this->export_tags($presets);
         $data->hastags = !empty($data->alltags);
-        $data->returnurl = course_get_format($this->course)
-            ->get_view_url($this->sectionnum, ['expanded' => true])
-            ->out(false);
+        $data->returnurl = $this->return_url()->out(false);
         // The core/progress_bar template renders its own inline script keyed on these, and listens
         // for an "update" DOM event, so the batch add only has to dispatch events at it.
         $data->progress = (object)[
@@ -136,6 +134,32 @@ class chooser_page implements renderable, templatable {
         ];
 
         return $data;
+    }
+
+    /**
+     * Where the browser is sent once a batch add has finished.
+     *
+     * The single-section page, not the course page. get_view_url() without 'navigation' returns
+     * the course page carrying expandsection= and a #section-N fragment, and neither reliably puts
+     * the teacher in front of what they just added: expandsection only un-collapses a section that
+     * was collapsed to begin with (see core_courseformat\output\local\content\section), so on an
+     * ordinary course it does nothing at all, and the fragment is resolved before the reactive
+     * course editor has finished rendering the sections it points at. The result is a teacher
+     * looking at the top of their course wondering where the activities went.
+     *
+     * Section 0 has no section page worth visiting, and a section that does not exist yet has no
+     * id to link to, so both fall back to the course page.
+     *
+     * @return moodle_url
+     */
+    protected function return_url(): moodle_url {
+        $format = course_get_format($this->course);
+
+        if ($this->sectionnum > 0 && $format->get_section($this->sectionnum)) {
+            return $format->get_view_url($this->sectionnum, ['navigation' => true]);
+        }
+
+        return $format->get_view_url($this->sectionnum, ['expanded' => true]);
     }
 
     /**
