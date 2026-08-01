@@ -220,30 +220,46 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             'static',
             'edpreset_detailsheading',
             get_string('presetdetails', 'mod_edpreset'),
-            html_writer::div(get_string('presetdetails_desc', 'mod_edpreset'), 'text-muted')
+            html_writer::div(get_string('presetdetails_help', 'mod_edpreset'), 'text-muted small')
         ),
         'edpreset_presetname' => $mform->createElement(
             'text',
             'edpreset_presetname',
-            get_string('presetname', 'mod_edpreset'),
+            get_string('presetname', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetname_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
             ['maxlength' => \mod_edpreset\meta::PRESETNAME_MAXLENGTH, 'size' => 60]
         ),
         'edpreset_description' => $mform->createElement(
             'textarea',
             'edpreset_description',
-            get_string('presetdescription', 'mod_edpreset'),
+            get_string('presetdescription', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetdescription_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
             ['rows' => 5, 'cols' => 60]
         ),
         'edpreset_tags' => $mform->createElement(
             'text',
             'edpreset_tags',
-            get_string('presettags', 'mod_edpreset'),
+            get_string('presettags', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presettags_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
             ['size' => 60]
         ),
         'edpreset_defaultname' => $mform->createElement(
             'text',
             'edpreset_defaultname',
-            get_string('presetdefaultname', 'mod_edpreset'),
+            get_string('presetdefaultname', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetdefaultname_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
             ['maxlength' => \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH, 'size' => 60]
         ),
     ];
@@ -255,26 +271,34 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     ];
 
     foreach (array_keys($elements) as $elementname) {
-        // The 'parentclass' attribute goes on the row wrapper rather than on the input itself
-        // (see templatable_form_element::export_for_template_base), which is how the group's
-        // border is drawn across a run of otherwise unrelated form rows. It is set here rather
-        // than in the constructors because HTML_QuickForm_static takes no attributes argument.
+        // These classes end up on the row wrapper, which is how the group's border is drawn across
+        // a run of otherwise unrelated form rows (see styles.css).
+        //
+        // Set as 'class', which templatable_form_element exports as 'extraclasses', rather than as
+        // the more obviously-named 'parentclass': core's core_form/element-template renders both,
+        // but theme_snap's overriding template renders only extraclasses, so parentclass would
+        // leave the group unstyled on that theme with nothing to show for it. 'class' is not
+        // rendered on the input itself - export_for_template_base excludes it from the element's
+        // own attributes - so this is safe for every element type here.
+        //
+        // It is set here rather than in the constructors because HTML_QuickForm_static takes no
+        // attributes argument at all.
         $elements[$elementname]->updateAttributes([
-            'parentclass' => 'edpreset-detail' . ($edgeclasses[$elementname] ?? ''),
+            'class' => 'edpreset-detail' . ($edgeclasses[$elementname] ?? ''),
         ]);
 
         // Two things about this call, both silent when wrong:
         // - insertElementBefore() takes its element BY REFERENCE and stores that reference in the
-        //   form ($this->_elements[$idx] =& $element). It must therefore be handed an array slot
-        //   that is never written again, not a loop variable: a loop variable is reassigned on the
-        //   next iteration, which re-points every slot already inserted at the last element, and
-        //   the whole group renders as five copies of "Default activity name".
+        // form ($this->_elements[$idx] =& $element). It must therefore be handed an array slot
+        // that is never written again, not a loop variable: a loop variable is reassigned on the
+        // next iteration, which re-points every slot already inserted at the last element, and
+        // the whole group renders as five copies of "Default activity name".
         // - It inserts immediately before 'name', so forward order is what produces the intended
-        //   layout. Inserting in reverse would reverse the group.
+        // layout. Inserting in reverse would reverse the group.
         $mform->insertElementBefore($elements[$elementname], 'name');
     }
 
-    $mform->addHelpButton('edpreset_detailsheading', 'presetdetails', 'mod_edpreset');
+    // $mform->addHelpButton('edpreset_detailsheading', 'presetdetails', 'mod_edpreset');
 
     $mform->setType('edpreset_presetname', PARAM_TEXT);
     // PARAM_RAW because the field is markdown: PARAM_TEXT strips the tags and decodes the entities
@@ -288,9 +312,11 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
     $mform->addRule('edpreset_description', get_string('required'), 'required', null, 'client');
 
+    /*
     foreach (edpreset_get_form_fieldmap() as $elementname => $stringkey) {
         $mform->addHelpButton($elementname, $stringkey, 'mod_edpreset');
     }
+    */
 
     // Loaded here rather than in data_preprocessing(), which a plugin callback cannot reach.
     // definition() runs before set_data(), and mform keeps the defaults of any element the

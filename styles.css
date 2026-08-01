@@ -16,35 +16,62 @@
  *
  * The border is drawn across a run of separate mform rows rather than around a wrapping element:
  * the fields are spliced in one at a time with insertElementBefore(), which only handles named
- * elements, so there is no wrapper to put a border on. Each row carries these classes through the
- * element's `parentclass` attribute.
+ * elements, so there is no wrapper to put a border on.
+ *
+ * The rows carry these classes through the element's `class` attribute, which core and theme_snap
+ * both render onto the row wrapper as `extraclasses`. NOT through `parentclass` - that is the
+ * semantically correct attribute, but theme_snap's core_form/element-template drops it, so on that
+ * theme the group would silently lose its border.
+ *
+ * Everything is scoped to .fitem because element-static also copies extraclasses onto its own
+ * inner value div, which must not pick up a border of its own.
  */
-.edpreset-detail {
+.fitem.edpreset-detail {
+    /*
+     * Boost's row is .mb-3 and Snap's is .form-group; the former is a Bootstrap spacing utility,
+     * so its margin is itself !important and can only be beaten in kind. Without this the rows
+     * stay separated and the side borders break into disconnected fragments.
+     */
+    /* stylelint-disable-next-line declaration-no-important */
+    margin-bottom: 0 !important;
+    /* .row carries negative side margins that would push the border outside the group. */
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0.5rem 1rem;
     border-left: 1px solid var(--bs-border-color, #dee2e6);
     border-right: 1px solid var(--bs-border-color, #dee2e6);
-    margin-bottom: 0;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+    background-color: rgba(125, 125, 125, 0.04);
+
+    .col-form-label {
+        padding-top: unset;
+    }
+
+    .form-control {
+        width: 100%;
+    }
 }
 
-.edpreset-detail-first {
+.fitem.edpreset-detail-first {
     border-top: 1px solid var(--bs-border-color, #dee2e6);
     border-top-left-radius: 0.5rem;
     border-top-right-radius: 0.5rem;
     padding-top: 1rem;
 }
 
-.edpreset-detail-first .col-form-label {
+/* The static element's label is the group heading; its value is the muted description. */
+.fitem.edpreset-detail-first .col-form-label {
     font-size: 1.171875rem;
     font-weight: 400;
 }
 
-.edpreset-detail-last {
+.fitem.edpreset-detail-last {
     border-bottom: 1px solid var(--bs-border-color, #dee2e6);
     border-bottom-left-radius: 0.5rem;
     border-bottom-right-radius: 0.5rem;
     padding-bottom: 1rem;
-    margin-bottom: 1.5rem;
+    /* Same reason as above: re-establishing a gap below the group, against a !important utility. */
+    /* stylelint-disable-next-line declaration-no-important */
+    margin-bottom: 1.5rem !important;
 }
 
 /* The preset activities page. */
