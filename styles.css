@@ -6,7 +6,7 @@
         font-family: "Font Awesome 6 Free";
         font-weight: 100;
         position: absolute;
-        right: calc(50% - 27px);
+        right: 4px;
         color: #0007;
     }
 }
