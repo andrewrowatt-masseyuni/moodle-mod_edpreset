@@ -100,18 +100,13 @@ class chooser {
     }
 
     /**
-     * The presets reached through the preset chooser page rather than the standard chooser.
+     * The presets reached through the preset chooser page including those on the standard chooser.
      *
      * @return preset[]
      */
     public static function get_page_presets(): array {
         $presets = [];
         foreach (self::get_live_presets() as $preset) {
-            /*
-            if ((int)$preset->get('sectionnum') === template::priority_section()) {
-                continue;
-            }
-                */
             $presets[] = $preset;
         }
         return $presets;

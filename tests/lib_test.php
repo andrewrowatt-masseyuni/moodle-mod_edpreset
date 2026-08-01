@@ -187,7 +187,7 @@ final class lib_test extends \advanced_testcase {
         $this->assertNotContains((int)$onpage->get('id'), $ids);
 
         $pageids = array_map(fn($p) => (int)$p->get('id'), chooser::get_page_presets());
-        $this->assertSame([(int)$onpage->get('id')], $pageids);
+        $this->assertSame([(int)$priority->get('id'), (int)$onpage->get('id')], $pageids);
     }
 
     /**

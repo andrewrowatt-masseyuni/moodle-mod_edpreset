@@ -67,6 +67,8 @@ final class form_elements_test extends \advanced_testcase {
         global $CFG;
         require_once($CFG->dirroot . "/mod/$modname/mod_form.php");
 
+        $this->set_current_course($course);
+
         [, , , $cm, $data] = prepare_new_moduleinfo_data($course, $modname, $sectionnum);
 
         $classname = 'mod_' . $modname . '_mod_form';
@@ -75,6 +77,22 @@ final class form_elements_test extends \advanced_testcase {
         $property = (new ReflectionClass($classname))->getProperty('_form');
 
         return $property->getValue($form);
+    }
+
+    /**
+     * Point the page - and with it the global $COURSE - at the course the form is being built for.
+     *
+     * moodleform_mod::standard_coursemodule_elements() looks the section up against the global
+     * $COURSE rather than against the course it was handed, and in a test that global is still the
+     * site course, whose sections do not line up. Production always arrives at these forms through
+     * require_login(), which has set both; this is the test's stand-in for that.
+     *
+     * @param stdClass $course The course the form is being built for.
+     */
+    private function set_current_course(stdClass $course): void {
+        global $PAGE;
+
+        $PAGE->set_course($course);
     }
 
     /**
@@ -253,6 +271,8 @@ final class form_elements_test extends \advanced_testcase {
         $cm = get_fast_modinfo($course)->get_cms();
         $cm = reset($cm);
 
+        $this->set_current_course($course);
+
         [$cmrec, , , $data] = get_moduleinfo_data($cm, $course);
         $form = new \mod_page_mod_form($data, $cm->sectionnum, $cmrec, $course);
         $mform = (new ReflectionClass(\mod_page_mod_form::class))->getProperty('_form')->getValue($form);
@@ -268,6 +288,8 @@ final class form_elements_test extends \advanced_testcase {
      */
     public function test_validation(): void {
         $course = $this->setup_template_course();
+
+        $this->set_current_course($course);
 
         [, , , $cm, $data] = prepare_new_moduleinfo_data($course, 'page', 1);
         $form = new \mod_page_mod_form($data, 1, $cm, $course);
@@ -303,6 +325,8 @@ final class form_elements_test extends \advanced_testcase {
     public function test_validation_is_skipped_outside_template_courses(): void {
         $this->setup_template_course();
         $ordinary = $this->getDataGenerator()->create_course(['numsections' => 3]);
+
+        $this->set_current_course($ordinary);
 
         [, , , $cm, $data] = prepare_new_moduleinfo_data($ordinary, 'page', 1);
         $form = new \mod_page_mod_form($data, 1, $cm, $ordinary);

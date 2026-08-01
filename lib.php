@@ -298,8 +298,6 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         $mform->insertElementBefore($elements[$elementname], 'name');
     }
 
-    // $mform->addHelpButton('edpreset_detailsheading', 'presetdetails', 'mod_edpreset');
-
     $mform->setType('edpreset_presetname', PARAM_TEXT);
     // PARAM_RAW because the field is markdown: PARAM_TEXT strips the tags and decodes the entities
     // that markdown may legitimately contain. It is cleaned once, at bake time, by
@@ -311,12 +309,6 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
 
     $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
     $mform->addRule('edpreset_description', get_string('required'), 'required', null, 'client');
-
-    /*
-    foreach (edpreset_get_form_fieldmap() as $elementname => $stringkey) {
-        $mform->addHelpButton($elementname, $stringkey, 'mod_edpreset');
-    }
-    */
 
     // Loaded here rather than in data_preprocessing(), which a plugin callback cannot reach.
     // definition() runs before set_data(), and mform keeps the defaults of any element the

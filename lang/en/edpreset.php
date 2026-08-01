@@ -98,6 +98,7 @@ $string['pluginadministration'] = 'Activity preset provider administration';
 $string['pluginname'] = 'Activity preset provider';
 $string['presetdefaultname'] = 'Default activity name';
 $string['presetdefaultname_help'] = 'The name given to the activity when a teacher adds this preset to their course. Leave blank to keep this exemplar\'s own name.';
+$string['presetdefaultnametoolong'] = 'The default activity name must be {$a} characters or fewer.';
 $string['presetdescription'] = 'Preset description';
 $string['presetdescription_help'] = 'A teacher-facing explanation of what this preset is and when to use it. Plain text; Markdown formatting is allowed.';
 $string['presetdetails'] = 'Preset details';
