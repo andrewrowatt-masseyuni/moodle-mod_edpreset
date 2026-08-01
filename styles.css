@@ -10,3 +10,320 @@
         color: #0007;
     }
 }
+
+/*
+ * The "Preset details" group on an activity's settings form.
+ *
+ * The border is drawn across a run of separate mform rows rather than around a wrapping element:
+ * the fields are spliced in one at a time with insertElementBefore(), which only handles named
+ * elements, so there is no wrapper to put a border on.
+ *
+ * The rows carry these classes through the element's `class` attribute, which core and theme_snap
+ * both render onto the row wrapper as `extraclasses`. NOT through `parentclass` - that is the
+ * semantically correct attribute, but theme_snap's core_form/element-template drops it, so on that
+ * theme the group would silently lose its border.
+ *
+ * Everything is scoped to .fitem because element-static also copies extraclasses onto its own
+ * inner value div, which must not pick up a border of its own.
+ */
+.fitem.edpreset-detail {
+    /*
+     * Boost's row is .mb-3 and Snap's is .form-group; the former is a Bootstrap spacing utility,
+     * so its margin is itself !important and can only be beaten in kind. Without this the rows
+     * stay separated and the side borders break into disconnected fragments.
+     */
+    /* stylelint-disable-next-line declaration-no-important */
+    margin-bottom: 0 !important;
+    /* .row carries negative side margins that would push the border outside the group. */
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0.5rem 1rem;
+    border-left: 1px solid var(--bs-border-color, #dee2e6);
+    border-right: 1px solid var(--bs-border-color, #dee2e6);
+    background-color: rgba(125, 125, 125, 0.04);
+
+    .col-form-label {
+        padding-top: unset;
+    }
+
+    .form-control {
+        width: 100%;
+    }
+}
+
+.fitem.edpreset-detail-first {
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+    padding-top: 1rem;
+}
+
+/* The static element's label is the group heading; its value is the muted description. */
+.fitem.edpreset-detail-first .col-form-label {
+    font-size: 1.171875rem;
+    font-weight: 400;
+}
+
+.fitem.edpreset-detail-last {
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    border-bottom-left-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+    padding-bottom: 1rem;
+    /* Same reason as above: re-establishing a gap below the group, against a !important utility. */
+    /* stylelint-disable-next-line declaration-no-important */
+    margin-bottom: 1.5rem !important;
+}
+
+/* The preset activities page. */
+
+.edpreset-chooser .edpreset-tagbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.edpreset-chooser .edpreset-tagbar-label {
+    font-size: 0.875rem;
+    color: #6a737b;
+    margin-right: 0.25rem;
+}
+
+/*
+ * A single neutral pill, deliberately not one of Bootstrap's badge-* colours: the tags are a
+ * flat vocabulary with no ranking between them, so colouring them would imply one.
+ */
+.edpreset-chooser .edpreset-tag {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border: 1px solid rgba(125, 125, 125, 0.35);
+    border-radius: 10rem;
+    background-color: rgba(125, 125, 125, 0.12);
+    color: inherit;
+    cursor: pointer;
+}
+
+.edpreset-chooser button.edpreset-tag:hover,
+.edpreset-chooser button.edpreset-tag:focus {
+    background-color: rgba(125, 125, 125, 0.25);
+}
+
+.edpreset-chooser .edpreset-tag-active {
+    background-color: rgba(125, 125, 125, 0.55);
+    border-color: rgba(125, 125, 125, 0.75);
+}
+
+.edpreset-chooser .edpreset-group-name {
+    font-weight: 400;
+}
+
+.edpreset-chooser .edpreset-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(25rem, 1fr));
+    gap: 1rem;
+}
+
+.edpreset-chooser .edpreset-card {
+    height: 100%;
+}
+
+.edpreset-chooser .edpreset-card-selected {
+    border-color: #0f6cbf;
+    box-shadow: 0 0 0 2px rgba(15, 108, 191, 0.35);
+}
+
+.edpreset-chooser .edpreset-card-description {
+    font-size: 0.875rem;
+
+    max-height: 7.5rem;
+    overflow-y: auto;
+}
+
+.edpreset-chooser .edpreset-card-description > :last-child {
+    margin-bottom: 0;
+}
+
+.edpreset-chooser .edpreset-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+/* Only one of the two star glyphs is ever shown; which one is driven by the button's state. */
+.edpreset-chooser .edpreset-card-star[data-favourited="1"] .edpreset-star-off,
+.edpreset-chooser .edpreset-card-star[data-favourited="0"] .edpreset-star-on,
+.edpreset-chooser .edpreset-card-select[data-selected="1"] .edpreset-select-add,
+.edpreset-chooser .edpreset-card-select[data-selected="0"] .edpreset-select-remove {
+    display: none;
+}
+
+/* ============================================================
+ * "Clean sections" reskin
+ *
+ * Keeps the Bootstrap card markup untouched; strips the chrome off the
+ * group cards so they read as typographic section headers, and gives the
+ * preset cards a lighter border + hover lift. Accent: #004b8d.
+ * ============================================================ */
+.edpreset-chooser {
+    --edpreset-accent: #004b8d;
+    --edpreset-accent-dark: #003a6e;
+}
+
+/* Rounder search field to match the cards. */
+.edpreset-chooser .edpreset-toolbar .form-control {
+    border-radius: 0.5rem;
+}
+
+/* Groups become sections: no card border, background or shadow. */
+.edpreset-chooser .edpreset-group.card {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    margin-bottom: 1.75rem !important;
+}
+
+.edpreset-chooser .edpreset-group > .card-header {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid #edf0f4;
+    border-radius: 0;
+    padding: 0 !important;
+}
+
+.edpreset-chooser .edpreset-group > .card-header > a {
+    color: var(--edpreset-accent);
+    padding-bottom: 0.55rem !important;
+}
+
+.edpreset-chooser .edpreset-group > .card-header > a:hover,
+.edpreset-chooser .edpreset-group > .card-header > a:focus {
+    text-decoration: none;
+    color: var(--edpreset-accent-dark);
+    background: transparent;
+}
+
+.edpreset-chooser .edpreset-group-name {
+    color: var(--edpreset-accent);
+    font-weight: 400;
+    font-size: 1.125rem;
+}
+
+.edpreset-chooser .edpreset-group-star {
+    color: var(--edpreset-accent);
+}
+
+/* The per-group count: an accent-tinted circle rather than a neutral pill. */
+.edpreset-chooser [data-region="groupcount"].edpreset-tag {
+    background-color: rgba(0, 75, 141, 0.10);
+    border-color: transparent;
+    color: var(--edpreset-accent);
+    font-weight: 400;
+    min-width: 1.4rem;
+    padding: 0.2em 0.55em;
+}
+
+/* Cards sit directly under the header, no inset card-body padding. */
+.edpreset-chooser .edpreset-group .card-body.edpreset-cards {
+    padding: 1rem 0 0;
+}
+
+/* Preset card shell. */
+.edpreset-chooser .edpreset-card.card {
+    border: 1px solid #e4e8ee;
+    border-radius: 0.7rem;
+    box-shadow: 0 1px 2px rgba(16, 40, 70, 0.04);
+    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+}
+
+.edpreset-chooser .edpreset-card.card:hover {
+    border-color: #d3dae3;
+    box-shadow: 0 6px 18px rgba(16, 40, 70, 0.10);
+    transform: translateY(-2px);
+}
+
+/* Activity icon in a soft tile; Moodle keeps its own purpose colour. */
+.edpreset-chooser .edpreset-card-icon {
+    width: 20px !important;
+    height: 20px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 0.55rem;
+    background: #f1f3f7;
+
+    img.icon.mod_edpreset-icon.activityicon {
+        width: 20px !important;
+        height: 20px !important;
+    }
+}
+
+.edpreset-chooser .edpreset-card-title {
+    color: #26313f;
+    font-weight: 400;
+}
+
+/* Top-right controls: zoom then star, kept close together. */
+.edpreset-chooser .edpreset-card-tools {
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.edpreset-chooser .edpreset-card-zoom {
+    color: #8a94a3;
+}
+
+.edpreset-chooser .edpreset-card-zoom:hover,
+.edpreset-chooser .edpreset-card-zoom:focus {
+    color: var(--edpreset-accent);
+}
+
+.edpreset-chooser .edpreset-card-star.text-primary {
+    color: var(--edpreset-accent) !important;
+}
+
+/* Primary "Add to course" button. */
+.edpreset-chooser .btn-primary {
+    background-color: var(--edpreset-accent);
+    border-color: var(--edpreset-accent);
+}
+
+.edpreset-chooser .btn-primary:hover,
+.edpreset-chooser .btn-primary:focus,
+.edpreset-chooser .btn-primary:active {
+    background-color: var(--edpreset-accent-dark);
+    border-color: var(--edpreset-accent-dark);
+    box-shadow: none;
+}
+
+/* The +/- "add to list" button as an accent outline that fills when active. */
+.edpreset-chooser .edpreset-card-select {
+    color: var(--edpreset-accent);
+    border-color: var(--edpreset-accent);
+}
+
+.edpreset-chooser .edpreset-card-select:hover,
+.edpreset-chooser .edpreset-card-select:focus,
+.edpreset-chooser .edpreset-card-select[data-selected="1"] {
+    background-color: var(--edpreset-accent);
+    border-color: var(--edpreset-accent);
+    color: #fff;
+}
+
+/* Selected-card highlight, retuned to the accent. */
+.edpreset-chooser .edpreset-card-selected {
+    border-color: var(--edpreset-accent);
+    box-shadow: 0 0 0 2px rgba(0, 75, 141, 0.30);
+}
+
+.edpreset-modinfo {
+    span {
+        font-weight: 400;
+    }
+}

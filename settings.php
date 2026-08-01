@@ -49,13 +49,6 @@ if ($ADMIN->fulltree) {
         PARAM_INT
     ));
 
-    $settings->add(new admin_setting_configcheckbox(
-        'mod_edpreset/showcategoryinhelp',
-        get_string('settings:showcategoryinhelp', 'mod_edpreset'),
-        get_string('settings:showcategoryinhelp_desc', 'mod_edpreset'),
-        1
-    ));
-
     $settings->add(new admin_setting_configtext(
         'mod_edpreset/maxpresets',
         get_string('settings:maxpresets', 'mod_edpreset'),

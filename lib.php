@@ -147,57 +147,288 @@ function mod_edpreset_get_all_content_items($defaultmodulecontentitem) {
 }
 
 /**
- * Serve images embedded in a preset's description.
+ * The form elements that make up the "Preset details" group, in the order they are shown.
  *
- * This is a deliberate publication decision, and the only one this plugin makes. A preset's
- * description is shown to every user who can add an activity in any course, none of whom
- * necessarily have access to the template course the description came from, so its images are
- * copied to system context at bake time and served from here.
+ * Every name is edpreset_ prefixed, and that is load-bearing rather than tidy:
+ * standard_coursemodule_elements() adds elements named 'name', 'intro' and 'tags' before this
+ * plugin's callback runs, and HTML_QuickForm silently drops an incompatible duplicate.
  *
- * Only that area is served. The stored activity backups deliberately have no branch here, so no
- * URL reaches them.
- *
- * @param stdClass $course Unused; these files live at system context.
- * @param stdClass $cm Unused.
- * @param context $context The context the file was requested against.
- * @param string $filearea The file area.
- * @param array $args Item id followed by the file path.
- * @param bool $forcedownload Whether to force download.
- * @param array $options Additional serving options.
- * @return bool False if the file could not be served.
+ * @return array<string, string> Element name => lang string key.
  */
-function edpreset_pluginfile($course, $cm, $context, $filearea, $args, $forcedownload, array $options = []) {
-    if ($filearea !== \mod_edpreset\preset::FILEAREA_HELP) {
-        return false;
-    }
-    if ($context->contextlevel !== CONTEXT_SYSTEM) {
-        return false;
-    }
-    if (!get_config('mod_edpreset', 'enabled')) {
-        return false;
-    }
+function edpreset_get_form_fieldmap(): array {
+    return [
+        'edpreset_presetname' => 'presetname',
+        'edpreset_description' => 'presetdescription',
+        'edpreset_tags' => 'presettags',
+        'edpreset_defaultname' => 'presetdefaultname',
+    ];
+}
 
-    require_login();
-    if (isguestuser()) {
-        return false;
-    }
-
-    $itemid = (int)array_shift($args);
-    $filename = array_pop($args);
-    $filepath = $args ? '/' . implode('/', $args) . '/' : '/';
-
-    $file = get_file_storage()->get_file(
-        $context->id,
-        'mod_edpreset',
-        \mod_edpreset\preset::FILEAREA_HELP,
-        $itemid,
-        $filepath,
-        $filename
-    );
-
-    if (!$file || $file->is_directory()) {
+/**
+ * Whether an activity's settings form should ask for preset details.
+ *
+ * @param moodleform_mod $formwrapper The form wrapper.
+ * @return bool
+ */
+function edpreset_form_wants_details($formwrapper): bool {
+    if (!\mod_edpreset\local\template::is_enabled()) {
         return false;
     }
 
-    send_stored_file($file, HOURSECS, 0, $forcedownload, $options);
+    $course = $formwrapper->get_course();
+    if (!$course || !\mod_edpreset\local\template::is_template_course((int)$course->id)) {
+        return false;
+    }
+
+    $current = $formwrapper->get_current();
+    if (empty($current->modulename)) {
+        return false;
+    }
+
+    // Section 0 holds instructions for whoever curates the template course, so its contents are
+    // documentation rather than exemplars and must not be made to supply preset details.
+    $section = (int)($current->section ?? 0);
+    if ($section < \mod_edpreset\local\template::first_scanned_section()) {
+        return false;
+    }
+
+    // A module that could never be baked into a preset should not be asked to describe itself as
+    // one. Subsections and modules without backup support are the two cases.
+    return \mod_edpreset\local\baker::modname_is_scannable($current->modulename);
+}
+
+/**
+ * Add the "Preset details" group to activities in a template course.
+ *
+ * @param moodleform_mod $formwrapper The form wrapper.
+ * @param MoodleQuickForm $mform The form itself.
+ */
+function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
+    if (!edpreset_form_wants_details($formwrapper)) {
+        return;
+    }
+
+    // The group belongs above the activity name, which means splicing it in rather than appending.
+    // mod_hvp adds 'name' as a hidden element before its first header, so inserting there would
+    // strand the group outside every fieldset - leave those forms alone.
+    if (!$mform->elementExists('name') || $mform->getElement('name')->getType() === 'hidden') {
+        return;
+    }
+
+    $elements = [
+        'edpreset_detailsheading' => $mform->createElement(
+            'static',
+            'edpreset_detailsheading',
+            get_string('presetdetails', 'mod_edpreset'),
+            html_writer::div(get_string('presetdetails_help', 'mod_edpreset'), 'text-muted small')
+        ),
+        'edpreset_presetname' => $mform->createElement(
+            'text',
+            'edpreset_presetname',
+            get_string('presetname', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetname_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['maxlength' => \mod_edpreset\meta::PRESETNAME_MAXLENGTH, 'size' => 60]
+        ),
+        'edpreset_description' => $mform->createElement(
+            'textarea',
+            'edpreset_description',
+            get_string('presetdescription', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetdescription_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['rows' => 5, 'cols' => 60]
+        ),
+        'edpreset_tags' => $mform->createElement(
+            'text',
+            'edpreset_tags',
+            get_string('presettags', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presettags_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['size' => 60]
+        ),
+        'edpreset_defaultname' => $mform->createElement(
+            'text',
+            'edpreset_defaultname',
+            get_string('presetdefaultname', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetdefaultname_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['maxlength' => \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH, 'size' => 60]
+        ),
+    ];
+
+    // Only the first and last rows carry the border's top and bottom edges.
+    $edgeclasses = [
+        'edpreset_detailsheading' => ' edpreset-detail-first',
+        'edpreset_defaultname' => ' edpreset-detail-last',
+    ];
+
+    foreach (array_keys($elements) as $elementname) {
+        // These classes end up on the row wrapper, which is how the group's border is drawn across
+        // a run of otherwise unrelated form rows (see styles.css).
+        //
+        // Set as 'class', which templatable_form_element exports as 'extraclasses', rather than as
+        // the more obviously-named 'parentclass': core's core_form/element-template renders both,
+        // but theme_snap's overriding template renders only extraclasses, so parentclass would
+        // leave the group unstyled on that theme with nothing to show for it. 'class' is not
+        // rendered on the input itself - export_for_template_base excludes it from the element's
+        // own attributes - so this is safe for every element type here.
+        //
+        // It is set here rather than in the constructors because HTML_QuickForm_static takes no
+        // attributes argument at all.
+        $elements[$elementname]->updateAttributes([
+            'class' => 'edpreset-detail' . ($edgeclasses[$elementname] ?? ''),
+        ]);
+
+        // Two things about this call, both silent when wrong:
+        // - insertElementBefore() takes its element BY REFERENCE and stores that reference in the
+        // form ($this->_elements[$idx] =& $element). It must therefore be handed an array slot
+        // that is never written again, not a loop variable: a loop variable is reassigned on the
+        // next iteration, which re-points every slot already inserted at the last element, and
+        // the whole group renders as five copies of "Default activity name".
+        // - It inserts immediately before 'name', so forward order is what produces the intended
+        // layout. Inserting in reverse would reverse the group.
+        $mform->insertElementBefore($elements[$elementname], 'name');
+    }
+
+    // $mform->addHelpButton('edpreset_detailsheading', 'presetdetails', 'mod_edpreset');
+
+    $mform->setType('edpreset_presetname', PARAM_TEXT);
+    // PARAM_RAW because the field is markdown: PARAM_TEXT strips the tags and decodes the entities
+    // that markdown may legitimately contain. It is cleaned once, at bake time, by
+    // format_text(..., ['noclean' => false]) - the same point at which it becomes visible to
+    // anyone outside this course.
+    $mform->setType('edpreset_description', PARAM_RAW);
+    $mform->setType('edpreset_tags', PARAM_TEXT);
+    $mform->setType('edpreset_defaultname', PARAM_TEXT);
+
+    $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
+    $mform->addRule('edpreset_description', get_string('required'), 'required', null, 'client');
+
+    /*
+    foreach (edpreset_get_form_fieldmap() as $elementname => $stringkey) {
+        $mform->addHelpButton($elementname, $stringkey, 'mod_edpreset');
+    }
+    */
+
+    // Loaded here rather than in data_preprocessing(), which a plugin callback cannot reach.
+    // definition() runs before set_data(), and mform keeps the defaults of any element the
+    // submitted data does not mention.
+    $cmid = (int)($formwrapper->get_current()->coursemodule ?? 0);
+    $meta = $cmid ? \mod_edpreset\meta::get_for_cm($cmid) : null;
+    if ($meta) {
+        $mform->setDefault('edpreset_presetname', $meta->get('presetname'));
+        $mform->setDefault('edpreset_description', $meta->get('description'));
+        $mform->setDefault('edpreset_tags', $meta->get('tags'));
+        $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
+    }
+}
+
+/**
+ * Validate the preset details.
+ *
+ * addRule() alone is not enough: a module can be created by web service or restore without the
+ * form ever being submitted, and this is also where the required-ness of a field that only exists
+ * in template courses can be expressed without touching every module's own validation.
+ *
+ * @param moodleform_mod $formwrapper The form wrapper.
+ * @param array $data The submitted data.
+ * @return array Errors keyed by element name.
+ */
+function mod_edpreset_coursemodule_validation($formwrapper, $data) {
+    if (!edpreset_form_wants_details($formwrapper)) {
+        return [];
+    }
+
+    $errors = [];
+
+    $presetname = trim((string)($data['edpreset_presetname'] ?? ''));
+    if ($presetname === '') {
+        $errors['edpreset_presetname'] = get_string('required');
+    } else if (\core_text::strlen($presetname) > \mod_edpreset\meta::PRESETNAME_MAXLENGTH) {
+        $errors['edpreset_presetname'] = get_string(
+            'presetnametoolong',
+            'mod_edpreset',
+            \mod_edpreset\meta::PRESETNAME_MAXLENGTH
+        );
+    }
+
+    if (trim((string)($data['edpreset_description'] ?? '')) === '') {
+        $errors['edpreset_description'] = get_string('required');
+    }
+
+    $defaultname = trim((string)($data['edpreset_defaultname'] ?? ''));
+    if (\core_text::strlen($defaultname) > \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH) {
+        $errors['edpreset_defaultname'] = get_string(
+            'presetdefaultnametoolong',
+            'mod_edpreset',
+            \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH
+        );
+    }
+
+    return $errors;
+}
+
+/**
+ * Store the preset details after a module in a template course is created or updated.
+ *
+ * @param stdClass $moduleinfo The module info, carrying the submitted form fields.
+ * @param stdClass $course The course the module is in.
+ * @return stdClass The module info, which core reassigns from the return value.
+ */
+function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
+    if (!\mod_edpreset\local\template::is_enabled()) {
+        return $moduleinfo;
+    }
+    if (!\mod_edpreset\local\template::is_template_course((int)$course->id)) {
+        return $moduleinfo;
+    }
+    // The fields are absent whenever the module was not created through the settings form -
+    // a web service call, a restore, or a form this plugin declined to extend.
+    if (!isset($moduleinfo->edpreset_presetname)) {
+        return $moduleinfo;
+    }
+
+    $cmid = (int)$moduleinfo->coursemodule;
+    $meta = \mod_edpreset\meta::get_for_cm($cmid) ?? new \mod_edpreset\meta();
+
+    $meta->set('cmid', $cmid);
+    $meta->set('presetname', trim((string)$moduleinfo->edpreset_presetname));
+    $meta->set('description', trim((string)($moduleinfo->edpreset_description ?? '')));
+    $meta->set('tags', \mod_edpreset\meta::normalise_tags((string)($moduleinfo->edpreset_tags ?? '')));
+    $meta->set('defaultname', trim((string)($moduleinfo->edpreset_defaultname ?? '')));
+
+    if ($meta->get('id')) {
+        $meta->update();
+    } else {
+        $meta->create();
+    }
+
+    return $moduleinfo;
+}
+
+/**
+ * Declare the user preferences this plugin writes.
+ *
+ * Without this, core_user::get_preference_definition() throws and the AJAX write from the preset
+ * chooser page is rejected. Note the frankenstyle function name.
+ *
+ * @return array
+ */
+function mod_edpreset_user_preferences(): array {
+    return [
+        \mod_edpreset\output\chooser_page::PREF_COLLAPSED => [
+            'type' => PARAM_RAW,
+            'null' => NULL_NOT_ALLOWED,
+            'default' => '',
+            'permissioncallback' => [core_user::class, 'is_current_user'],
+        ],
+    ];
 }

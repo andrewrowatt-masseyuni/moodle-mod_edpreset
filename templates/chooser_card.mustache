@@ -1,0 +1,131 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/chooser_card
+
+    One preset on the preset activities page.
+
+    A starred preset is rendered twice - once in its own group and once under "Starred" - so
+    nothing here may assume it is unique in the document. The AMD module keys off data-presetid
+    and updates every copy together.
+
+    Context variables required for this template:
+    * presetid int
+    * title string
+    * description string - already cleaned HTML, rendered unescaped
+    * icon string - pre-rendered icon HTML
+    * modname string
+    * modfullname string - the human-readable activity type, e.g. "Assignment"
+    * purpose string - MOD_PURPOSE_*, drives the icon colour
+    * branded bool
+    * favourited bool
+    * addurl string - a copy.php link that ends on the new activity's settings form
+    * searchtext string - lowercased name, description and tags, for the in-page text filter
+    * tagkeys string - lowercased tags, pipe separated, for the in-page tag filter
+    * hastags bool
+    * tags array - name
+
+    Example context (json):
+    {
+        "presetid": 7,
+        "title": "Reflective journal",
+        "description": "<p>Use this for a weekly reflection.</p>",
+        "icon": "<img src='#' alt=''>",
+        "modname": "assign",
+        "modfullname": "Assignment",
+        "purpose": "assessment",
+        "branded": false,
+        "favourited": false,
+        "addurl": "https://moodle.local/mod/edpreset/copy.php?preset=7",
+        "searchtext": "reflective journal assessment",
+        "tagkeys": "assessment",
+        "hastags": true,
+        "tags": [{"name": "Assessment"}]
+    }
+}}
+<div class="card edpreset-card"
+     data-region="card"
+     data-presetid="{{presetid}}"
+     data-title="{{title}}"
+     data-searchtext="{{searchtext}}"
+     data-tagkeys="{{tagkeys}}"
+>
+    <div class="card-body d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+            <h3 class="h6 mb-0 flex-grow-1 edpreset-card-title">{{title}}</h3>
+            <div class="edpreset-card-tools d-flex align-items-center" style="align-self: start;">
+                <!--<button type="button"
+                        class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-zoom text-muted"
+                        data-action="preview"
+                        aria-label="{{#str}} chooser:preview, mod_edpreset, {{title}} {{/str}}"
+                        title="{{#str}} chooser:preview, mod_edpreset {{/str}}"
+                >
+                    <i class="icon fa fa-expand fa-fw" aria-hidden="true"></i>
+                </button>-->
+                <button type="button"
+                        class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-star {{#favourited}}text-primary{{/favourited}}{{^favourited}}text-muted{{/favourited}}"
+                        data-action="favourite"
+                        data-favourited="{{#favourited}}1{{/favourited}}{{^favourited}}0{{/favourited}}"
+                        aria-pressed="{{#favourited}}true{{/favourited}}{{^favourited}}false{{/favourited}}"
+                        aria-label="{{#str}} chooser:favourite, mod_edpreset, {{title}} {{/str}}"
+                >
+                    <span class="edpreset-star-on">{{#pix}} i/star, core {{/pix}}</span>
+                    <span class="edpreset-star-off">{{#pix}} i/star-o, core {{/pix}}</span>
+                </button>
+            </div>
+        </div>
+        <div class="d-flex align-items-center edpreset-modinfo edpreset-modinfo_{{modname}} mb-2">
+            <div class="edpreset-card-icon icon-no-margin modicon_{{modname}} activityiconcontainer smaller {{purpose}} {{#branded}}isbranded{{/branded}} me-1">
+                {{{icon}}}
+            </div>
+            <small>{{modfullname}}</small>
+        </div>
+
+        <div class="edpreset-card-description flex-grow-1">{{{description}}}</div>
+
+        {{#hastags}}
+            <div class="edpreset-tags mt-2">
+                {{#tags}}
+                    <button type="button"
+                            class="edpreset-tag"
+                            data-action="tag"
+                            data-tag="{{name}}"
+                            aria-pressed="false"
+                            aria-label="{{#str}} chooser:filterbytag, mod_edpreset, {{name}} {{/str}}"
+                    >{{name}}</button>
+                {{/tags}}
+            </div>
+        {{/hastags}}
+
+        <div class="edpreset-card-actions d-flex align-items-center mt-3">
+            <a href="{{addurl}}" class="btn btn-primary btn-sm flex-grow-1" data-action="addone">
+                {{#str}} chooser:addtocourse, mod_edpreset {{/str}}
+            </a>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm ms-2 edpreset-card-select"
+                    data-action="select"
+                    data-selected="0"
+                    aria-pressed="false"
+                    aria-label="{{#str}} chooser:addtolistof, mod_edpreset, {{title}} {{/str}}"
+                    title="{{#str}} chooser:addtolist, mod_edpreset {{/str}}"
+            >
+                <span class="edpreset-select-add" aria-hidden="true">+</span>
+                <span class="edpreset-select-remove" aria-hidden="true">&minus;</span>
+            </button>
+        </div>
+    </div>
+</div>

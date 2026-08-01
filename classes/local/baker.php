@@ -18,6 +18,7 @@ namespace mod_edpreset\local;
 
 use cm_info;
 use core_courseformat\sectiondelegate;
+use mod_edpreset\meta;
 use mod_edpreset\preset;
 use mod_edpreset\task\bake_preset;
 use mod_edpreset\task\rebuild_presets;
@@ -34,7 +35,6 @@ use Throwable;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class baker {
-
     /**
      * Rescan the template course: add, update and remove presets, and queue any needed bakes.
      *
@@ -110,14 +110,33 @@ class baker {
         if (!$cm->visible || $cm->deletioninprogress) {
             return false;
         }
+        if (!self::modname_is_scannable($cm->modname)) {
+            return false;
+        }
+        // The curator's preset details are what make an activity an exemplar. Without them there
+        // is no name to show, nothing to describe it and no way to tell a curated exemplar from
+        // something a colleague parked here, so it is not a preset.
+        return meta::exists_for_cm((int)$cm->id);
+    }
+
+    /**
+     * Whether a module type can become a preset at all.
+     *
+     * Split out from cm_is_scannable() so the settings form can decide whether to ask for preset
+     * details before any course module exists.
+     *
+     * @param string $modname The module name, without the mod_ prefix.
+     * @return bool
+     */
+    public static function modname_is_scannable(string $modname): bool {
         // A delegating module carries a whole section with it; core filters these out of the
         // chooser by component name, and ours is always mod_edpreset, so that filter would not
         // fire and we could end up nesting subsections.
-        if (sectiondelegate::has_delegate_class('mod_' . $cm->modname)) {
+        if (sectiondelegate::has_delegate_class('mod_' . $modname)) {
             return false;
         }
         // Without backup support there is no way to copy it at all.
-        return (bool)plugin_supports('mod', $cm->modname, FEATURE_BACKUP_MOODLE2, true);
+        return (bool)plugin_supports('mod', $modname, FEATURE_BACKUP_MOODLE2, true);
     }
 
     /**
@@ -134,6 +153,9 @@ class baker {
      * @return preset
      */
     protected static function upsert(stdClass $course, cm_info $cm, string $category, int $sortorder): preset {
+        // Guaranteed by cm_is_scannable(), which is the gate on getting here at all.
+        $details = meta::get_for_cm((int)$cm->id);
+
         $preset = preset::get_record(['templatecmid' => $cm->id]) ?: new preset();
 
         $preset->set('templatecourseid', (int)$course->id);
@@ -141,7 +163,14 @@ class baker {
         $preset->set('modname', $cm->modname);
         $preset->set('instanceid', (int)$cm->instance);
         $preset->set('contextid', (int)$cm->context->id);
-        $preset->set('title', format_string($cm->name, true, ['context' => $cm->context]));
+        // Deliberately the curator's preset name rather than $cm->name: an inline rename on the
+        // course page fires course_module_updated without running the settings form's post
+        // actions, so what teachers see must not be tied to what the exemplar happens to be
+        // called this week.
+        $preset->set('title', $details->get('presetname'));
+        $preset->set('description', self::render_description($details));
+        $preset->set('tags', $details->get('tags'));
+        $preset->set('defaultname', $details->get('defaultname'));
         $preset->set('category', $category);
         $preset->set('sectionnum', (int)$cm->sectionnum);
         $preset->set('sortorder', $sortorder);
@@ -149,6 +178,7 @@ class baker {
         $preset->set('purpose', (string)plugin_supports('mod', $cm->modname, FEATURE_MOD_PURPOSE, MOD_PURPOSE_OTHER));
         $preset->set('branded', (bool)component_callback('mod_' . $cm->modname, 'is_branded', [], false));
         $preset->set('exemplartimemodified', self::exemplar_timemodified($cm));
+        $preset->set('help', self::build_help($preset));
 
         if ($preset->get('id')) {
             $preset->update();
@@ -157,93 +187,49 @@ class baker {
             $preset->create();
         }
 
-        // Needs the preset id, so it has to follow the create().
-        $preset->set('help', self::build_help($cm, $preset, $category));
-        $preset->update();
-
         return $preset;
     }
 
     /**
-     * Build the description shown in the chooser, and publish any images it needs.
+     * Turn the curator's markdown into the cleaned HTML shown to teachers.
      *
-     * The exemplar's intro can contain images, but their URLs point into the template course, where
-     * mod_<x>_pluginfile() requires enrolment - so every teacher would get a broken image. The
-     * files are therefore copied to a system-context area of this plugin and the URLs rewritten to
-     * point there. That is a deliberate publication decision: anything in an exemplar's description
-     * becomes readable by everyone who can add an activity.
+     * Cleaned here, at bake time, rather than at display time: this is the point at which the text
+     * crosses out of the template course and becomes readable by everyone who can add an activity,
+     * and both the chooser and the preset page render it unescaped.
      *
-     * @param cm_info $cm The exemplar.
-     * @param preset $preset The preset.
-     * @param string $category The section name.
+     * @param meta $details The curator's preset details.
      * @return string Cleaned HTML.
      */
-    protected static function build_help(cm_info $cm, preset $preset, string $category): string {
-        global $DB;
-
-        $systemcontext = \context_system::instance();
-        $presetid = (int)$preset->get('id');
-
-        $intro = '';
-        $introformat = FORMAT_HTML;
-        if (plugin_supports('mod', $cm->modname, FEATURE_MOD_INTRO, true)) {
-            $record = $DB->get_record($cm->modname, ['id' => $cm->instance], 'id, intro, introformat');
-            if ($record) {
-                $intro = (string)$record->intro;
-                $introformat = (int)$record->introformat;
-            }
-        }
-
-        self::copy_help_files($cm, $presetid);
-
-        $intro = file_rewrite_pluginfile_urls(
-            $intro,
-            'pluginfile.php',
-            $systemcontext->id,
-            'mod_edpreset',
-            preset::FILEAREA_HELP,
-            $presetid
+    protected static function render_description(meta $details): string {
+        return format_text(
+            (string)$details->get('description'),
+            FORMAT_MARKDOWN,
+            ['context' => \context_system::instance(), 'noclean' => false]
         );
+    }
 
-        // Cleaned here, at bake time, because core exports the chooser's help text as PARAM_RAW and
-        // the template renders it unescaped.
-        $help = format_text($intro, $introformat, ['context' => $systemcontext, 'noclean' => false]);
+    /**
+     * Build the description the standard activity chooser shows in its info panel.
+     *
+     * The tags are prefixed rather than merely shown, because the chooser's search matches
+     * descriptions as well as titles - so this is what makes a preset findable by tag there,
+     * without any change to core.
+     *
+     * @param preset $preset The preset, with its description already set.
+     * @return string Cleaned HTML.
+     */
+    protected static function build_help(preset $preset): string {
+        $help = (string)$preset->get('description');
 
-        if (get_config('mod_edpreset', 'showcategoryinhelp') && $category !== '') {
-            // Also makes the category searchable: the chooser's search matches descriptions as
-            // well as titles.
+        $tags = (string)$preset->get('tags');
+        if ($tags !== '') {
             $help = \html_writer::div(
-                get_string('category', 'mod_edpreset', $category),
-                'edpreset-category'
+                s($tags),
+                'edpreset-help-tags'
             ) . $help;
         }
 
         return $help;
-    }
-
-    /**
-     * Copy the exemplar's intro files into this plugin's publicly readable area.
-     *
-     * @param cm_info $cm The exemplar.
-     * @param int $presetid The preset id.
-     */
-    protected static function copy_help_files(cm_info $cm, int $presetid): void {
-        $fs = get_file_storage();
-        $systemcontext = \context_system::instance();
-
-        $fs->delete_area_files($systemcontext->id, 'mod_edpreset', preset::FILEAREA_HELP, $presetid);
-
-        $files = $fs->get_area_files($cm->context->id, 'mod_' . $cm->modname, 'intro', 0, 'filename', false);
-        foreach ($files as $file) {
-            $fs->create_file_from_storedfile([
-                'contextid' => $systemcontext->id,
-                'component' => 'mod_edpreset',
-                'filearea' => preset::FILEAREA_HELP,
-                'itemid' => $presetid,
-                'filepath' => $file->get_filepath(),
-                'filename' => $file->get_filename(),
-            ], $file);
-        }
     }
 
     /**
@@ -306,20 +292,31 @@ class baker {
 
         $presetid = (int)$preset->get('id');
 
-        foreach ([preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
-                  preset::FILEAREA_UNSCRUBBED, preset::FILEAREA_HELP] as $filearea) {
+        foreach (
+            [preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
+                  preset::FILEAREA_UNSCRUBBED] as $filearea
+        ) {
             backup_baker::clear_area($preset, $filearea);
         }
 
         // Favourites and recommendations point at this preset id. \core_favourites has no bulk
-        // delete for an arbitrary item, so this is done directly.
-        foreach (['contentitem_mod_edpreset', 'recommend_mod_edpreset'] as $itemtype) {
-            $DB->delete_records('favourite', [
-                'component' => 'core_course',
-                'itemtype' => $itemtype,
+        // delete for an arbitrary item, so this is done directly. The contextid is deliberately
+        // not part of the criteria: the preset chooser page's stars live in each user's own
+        // context, so there is a different one per user.
+        $DB->delete_records_select(
+            'favourite',
+            "(component = :core AND itemtype IN (:chooseritem, :recommend) AND itemid = :itemid)
+             OR (component = :ours AND itemtype = :ouritemtype AND itemid = :ouritemid)",
+            [
+                'core' => 'core_course',
+                'chooseritem' => 'contentitem_mod_edpreset',
+                'recommend' => 'recommend_mod_edpreset',
                 'itemid' => $presetid,
-            ]);
-        }
+                'ours' => preset::FAVOURITE_COMPONENT,
+                'ouritemtype' => preset::FAVOURITE_ITEMTYPE,
+                'ouritemid' => $presetid,
+            ]
+        );
 
         $preset->delete();
     }
@@ -415,8 +412,10 @@ class baker {
     public static function clear_cache(): int {
         $count = 0;
         foreach (preset::get_records() as $preset) {
-            foreach ([preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
-                      preset::FILEAREA_UNSCRUBBED] as $filearea) {
+            foreach (
+                [preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
+                      preset::FILEAREA_UNSCRUBBED] as $filearea
+            ) {
                 backup_baker::clear_area($preset, $filearea);
             }
             $preset->set('backupcontenthash', null);

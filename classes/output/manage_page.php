@@ -34,7 +34,6 @@ use stdClass;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class manage_page implements renderable, templatable {
-
     /**
      * Build the page context.
      *

@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+use mod_edpreset\meta;
 use mod_edpreset\preset;
 
 /**
@@ -114,9 +115,42 @@ class mod_edpreset_generator extends testing_module_generator {
     }
 
     /**
+     * Record preset details against an activity.
+     *
+     * The presence of this row is what makes an activity a preset, and the settings form is the
+     * only thing that writes one in production. create_module() does not run the form's post
+     * actions, so tests that expect an exemplar to be scanned must call this.
+     *
+     * @param int $cmid The course module id.
+     * @param array $fields Overrides for the metadata fields.
+     * @return meta
+     */
+    public function create_metadata(int $cmid, array $fields = []): meta {
+        static $counter = 0;
+        $counter++;
+
+        $fields += [
+            'cmid' => $cmid,
+            'presetname' => 'Test preset ' . $counter,
+            'description' => 'Description of test preset ' . $counter,
+            'tags' => '',
+            // Deliberately empty by default: a non-empty value renames every copied activity, and
+            // that should only happen in the tests that are about it.
+            'defaultname' => '',
+        ];
+
+        $meta = new meta(0, (object)$fields);
+        $meta->create();
+
+        return $meta;
+    }
+
+    /**
      * Create a course laid out like a template course, and point the plugin at it.
      *
-     * @param array $spec Section number => array of ['modname' => ..., 'name' => ...] activity specs.
+     * @param array $spec Section number => array of activity specs. Each spec takes 'modname',
+     *                    an optional 'name', and an optional 'meta': an array of metadata field
+     *                    overrides, or false for an activity with no preset details at all.
      *                    Section 0 is reserved for curator instructions and is never scanned.
      * @return stdClass The course.
      */
@@ -128,11 +162,18 @@ class mod_edpreset_generator extends testing_module_generator {
 
         foreach ($spec as $sectionnum => $activities) {
             foreach ($activities as $activity) {
-                $generator->create_module($activity['modname'], [
+                $name = $activity['name'] ?? ucfirst($activity['modname']);
+                $module = $generator->create_module($activity['modname'], [
                     'course' => $course->id,
                     'section' => $sectionnum,
-                    'name' => $activity['name'] ?? ucfirst($activity['modname']),
+                    'name' => $name,
                 ]);
+
+                $metafields = $activity['meta'] ?? [];
+                if ($metafields === false) {
+                    continue;
+                }
+                $this->create_metadata((int)$module->cmid, $metafields + ['presetname' => $name]);
             }
         }
 

@@ -38,7 +38,25 @@ class chooser {
     protected const DEFAULT_MAX_PRESETS = 100;
 
     /**
+     * The content item id of the placeholder that opens the preset chooser page.
+     *
+     * -1 is not an arbitrary sentinel. course_content_item_exporter sets
+     * 'legacyitem' => (id == -1), and the chooser's item template wraps its favourite star in
+     * {{^legacyitem}}, so this is the one value that renders an item with no star. That matters:
+     * content_item_service::add_to_user_favourites() resolves a starred id with array_search()
+     * over get_all_content_items() and, on failure, silently indexes $items[0] - an unrelated
+     * module. Any other id would put a star on something that is not in that list.
+     *
+     * @var int
+     */
+    public const PLACEHOLDER_ID = -1;
+
+    /**
      * The presets offered in a given course.
+     *
+     * Only the priority section's presets go here, plus one placeholder leading to the rest. The
+     * standard chooser renders every item it is given at once, so it stops being usable as soon as
+     * the template course grows.
      *
      * Access is already gated upstream: content_item_service requires moodle/course:manageactivities
      * and applies course_allowed_module() (i.e. mod/edpreset:addinstance) to everything we return.
@@ -48,29 +66,99 @@ class chooser {
      * @return content_item[]
      */
     public static function get_content_items(stdClass $course, stdClass $user): array {
-        if (!template::is_configured()) {
-            return [];
-        }
-
-        // Never offer presets inside the template course itself: the curator is editing the
-        // exemplars there, and copying one back into the same course only causes confusion.
-        if ((int)$course->id === template::get_courseid()) {
+        if (!self::is_offered_in($course)) {
             return [];
         }
 
         $items = [];
         foreach (self::get_live_presets() as $preset) {
+            if ((int)$preset->get('sectionnum') !== template::priority_section()) {
+                continue;
+            }
             $items[] = self::make_content_item($preset, $course);
         }
+
+        $items[] = self::make_placeholder_item($course);
+
         return $items;
+    }
+
+    /**
+     * Whether presets are offered in a course at all.
+     *
+     * @param stdClass $course The course.
+     * @return bool
+     */
+    public static function is_offered_in(stdClass $course): bool {
+        if (!template::is_configured()) {
+            return false;
+        }
+
+        // Never offer presets inside a template course itself: the curator is editing the
+        // exemplars there, and copying one back into the same course only causes confusion.
+        return !template::is_template_course((int)$course->id);
+    }
+
+    /**
+     * The presets reached through the preset chooser page rather than the standard chooser.
+     *
+     * @return preset[]
+     */
+    public static function get_page_presets(): array {
+        $presets = [];
+        foreach (self::get_live_presets() as $preset) {
+            /*
+            if ((int)$preset->get('sectionnum') === template::priority_section()) {
+                continue;
+            }
+                */
+            $presets[] = $preset;
+        }
+        return $presets;
+    }
+
+    /**
+     * The chooser item that opens the preset chooser page.
+     *
+     * @param stdClass $course The target course.
+     * @return content_item
+     */
+    protected static function make_placeholder_item(stdClass $course): content_item {
+        global $OUTPUT;
+
+        return new content_item(
+            self::PLACEHOLDER_ID,
+            'edpreset_template',
+            new string_title(get_string('chooser:placeholdertitle', 'mod_edpreset')),
+            // Must already contain a "?": activitychooser.js string-appends "&section=..." to it.
+            new moodle_url('/mod/edpreset/chooser.php', [
+                'course' => $course->id,
+                'sesskey' => sesskey(),
+            ]),
+            $OUTPUT->pix_icon('monologo', '', 'mod_edpreset', ['class' => 'activityicon']),
+            get_string('chooser:placeholderhelp', 'mod_edpreset'),
+            // Under the "Activities and resources" tab modes there is no "All" tab, and the
+            // Activities tab filters on archetype === MOD_ARCHETYPE_OTHER, so anything else here
+            // would make the placeholder invisible on sites configured that way.
+            MOD_ARCHETYPE_OTHER,
+            'mod_edpreset',
+            MOD_PURPOSE_CONTENT,
+            false
+        );
     }
 
     /**
      * Every preset, without course context.
      *
-     * This must stay consistent with get_content_items(): content_item_service::add_to_user_favourites()
-     * looks the favourited id up with array_search() against this list, so a preset missing from
-     * here would make favouriting return the wrong item entirely.
+     * Deliberately a superset of get_content_items(), which offers only the priority section.
+     * content_item_service::add_to_user_favourites() looks a starred id up with array_search()
+     * against this list and, when that fails, indexes $items[0] instead - so anything that can
+     * carry a star in the standard chooser must appear here. Narrowing this to match
+     * get_content_items() would break that, and would also hide the other presets from the
+     * "Recommend activities" admin page.
+     *
+     * The placeholder is not included: it renders without a star (see PLACEHOLDER_ID), so nothing
+     * can ever ask to favourite it.
      *
      * @return content_item[]
      */
@@ -182,24 +270,10 @@ class chooser {
     /**
      * The item's icon, rendered from the exemplar's module.
      *
-     * Rendered icon HTML is not stored on the preset because it embeds $CFG->wwwroot and the theme
-     * revision, so it is regenerated per request.
-     *
      * @param preset $preset The preset.
      * @return string
      */
     protected static function item_icon(preset $preset): string {
-        global $OUTPUT;
-
-        $modname = $preset->get('modname');
-        // Modules without a monologo icon must not have the colour filter applied to them.
-        $iconclass = \core_component::has_monologo_icon('mod', $modname) ? '' : 'nofilter';
-
-        return $OUTPUT->pix_icon(
-            $preset->get('icon'),
-            '',
-            $modname,
-            ['class' => "mod_edpreset-icon activityicon $iconclass"]
-        );
+        return $preset->get_icon_html();
     }
 }

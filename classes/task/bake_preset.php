@@ -30,7 +30,6 @@ use mod_edpreset\local\baker;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class bake_preset extends adhoc_task {
-
     #[\Override]
     public function get_name(): string {
         return get_string('task:bakepreset', 'mod_edpreset');

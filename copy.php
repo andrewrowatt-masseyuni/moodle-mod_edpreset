@@ -29,6 +29,7 @@
 require(__DIR__ . '/../../config.php');
 
 use mod_edpreset\preset;
+use mod_edpreset\local\access;
 use mod_edpreset\local\activity_copier;
 
 $presetid = required_param('preset', PARAM_INT);
@@ -45,31 +46,14 @@ require_login($course);
 require_sesskey();
 
 $coursecontext = context_course::instance($course->id);
-require_capability('moodle/course:manageactivities', $coursecontext);
-// Checked explicitly so the teacher gets this plugin's error rather than a bare restore failure.
-require_capability('moodle/restore:restoretargetimport', $coursecontext);
-
-if (!course_allowed_module($course, 'edpreset')) {
-    throw new moodle_exception('moduledisable');
-}
+access::require_can_copy_into($course, $sectionnum);
 
 $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
 if (!$preset || !$preset->is_live()) {
     throw new moodle_exception('invalidpreset', 'mod_edpreset');
 }
 
-// Same guard core applies in modedit.php (MDL-69431): a section number beyond the format's maximum
-// would leave non-sequential rows in course_sections.
-$maxsections = course_get_format($course)->get_max_sections();
-if ($sectionnum < 0 || $sectionnum > $maxsections) {
-    throw new moodle_exception('maxsectionslimit', 'moodle', '', $maxsections);
-}
-
-// A beforemod from another course would be meaningless. Core tolerates this by falling back to
-// appending; do the same, explicitly.
-if ($beforemod && !$DB->record_exists('course_modules', ['id' => $beforemod, 'course' => $course->id])) {
-    $beforemod = 0;
-}
+$beforemod = access::clean_beforemod($course, $beforemod);
 
 if ($sectionreturn !== null && $sectionreturn < 0) {
     $sectionreturn = null;

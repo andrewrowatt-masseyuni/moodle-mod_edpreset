@@ -156,7 +156,47 @@ final class activity_copier_test extends \advanced_testcase {
 
         $this->assertSame('assign', $cm->modname);
         $this->assertSame((int)$course->id, (int)$cm->course);
+        // No default activity name is set on this preset, so the exemplar's own name carries over.
         $this->assertSame('Exemplar assign', $cm->name);
+    }
+
+    /**
+     * A preset with a default activity name renames the copy.
+     *
+     * The rename has to happen before copy() reads modinfo: set_coursemodule_name() purges and
+     * rebuilds the course cache, so renaming afterwards would hand the caller a cm_info still
+     * carrying the exemplar's name - which is exactly what the batch-add progress display shows.
+     */
+    public function test_default_activity_name_is_applied(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('defaultname', 'Weekly reflection');
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        $cm = activity_copier::copy($preset, $course, 1);
+
+        $this->assertSame('Weekly reflection', $cm->name);
+        $this->assertSame('Weekly reflection', get_fast_modinfo($course)->get_cm($cm->id)->name);
+    }
+
+    /**
+     * A default activity name of whitespace is treated as none at all.
+     */
+    public function test_blank_default_activity_name_is_ignored(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('defaultname', '   ');
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        $this->assertSame('Exemplar assign', activity_copier::copy($preset, $course, 1)->name);
     }
 
     /**
