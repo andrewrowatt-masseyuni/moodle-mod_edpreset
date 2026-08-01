@@ -1,0 +1,180 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/chooser_page
+
+    The preset activities a teacher can browse, filter and add to their course.
+
+    Everything the in-page filter needs is baked onto each card as a data attribute, so filtering
+    never talks to the server. Adding does: a single add is an ordinary link to copy.php, which
+    ends on the new activity's settings form; a batch add is handled by mod_edpreset/chooser.
+
+    Context variables required for this template:
+    * courseid int - the course presets are being added to
+    * sectionnum int - the section they will be added to
+    * beforemod int - course module id to insert before, or 0
+    * returnurl string - where to send the browser after a batch add
+    * sesskey string
+    * hasgroups bool
+    * groups array - name, key, count, expanded, starred, cards
+    * alltags array - name
+    * hastags bool
+    * progress object - idnumber, id, value, error
+
+    Example context (json):
+    {
+        "courseid": 12,
+        "sectionnum": 2,
+        "beforemod": 0,
+        "returnurl": "https://moodle.local/course/view.php?id=12#section-2",
+        "sesskey": "abc123",
+        "hasgroups": true,
+        "hastags": true,
+        "alltags": [{"name": "Assessment"}],
+        "progress": {"idnumber": "edpreset-progress", "id": 0, "value": 0, "error": 0},
+        "groups": [
+            {
+                "name": "Assessment",
+                "key": "1a2b3c4d",
+                "count": 1,
+                "expanded": true,
+                "starred": false,
+                "cards": [
+                    {
+                        "presetid": 7,
+                        "title": "Reflective journal",
+                        "description": "<p>Use this for a weekly reflection.</p>",
+                        "icon": "<img src='#' alt=''>",
+                        "modname": "assign",
+                        "purpose": "assessment",
+                        "branded": false,
+                        "favourited": false,
+                        "addurl": "https://moodle.local/mod/edpreset/copy.php?preset=7",
+                        "searchtext": "reflective journal assessment",
+                        "tagkeys": "assessment",
+                        "hastags": true,
+                        "tags": [{"name": "Assessment"}]
+                    }
+                ]
+            }
+        ]
+    }
+}}
+<div class="edpreset-chooser"
+     data-region="edpreset-chooser"
+     data-courseid="{{courseid}}"
+     data-sectionnum="{{sectionnum}}"
+     data-beforemod="{{beforemod}}"
+     data-returnurl="{{returnurl}}"
+>
+    {{#hasgroups}}
+        <div class="edpreset-toolbar mb-3">
+            <div class="mb-2">
+                {{< core/search_input_auto }}
+                    {{$label}}{{#str}} chooser:search, mod_edpreset {{/str}}{{/label}}
+                    {{$placeholder}}{{#str}} chooser:searchplaceholder, mod_edpreset {{/str}}{{/placeholder}}
+                {{/ core/search_input_auto }}
+            </div>
+
+            {{#hastags}}
+                <div class="edpreset-tagbar" data-region="tagbar">
+                    <span class="edpreset-tagbar-label">{{#str}} chooser:tagsheading, mod_edpreset {{/str}}</span>
+                    {{#alltags}}
+                        <button type="button"
+                                class="edpreset-tag"
+                                data-action="tag"
+                                data-tag="{{name}}"
+                                aria-pressed="false"
+                                aria-label="{{#str}} chooser:filterbytag, mod_edpreset, {{name}} {{/str}}"
+                        >{{name}}</button>
+                    {{/alltags}}
+                </div>
+            {{/hastags}}
+        </div>
+
+        <div class="edpreset-noresults alert alert-info d-none" data-region="noresults" role="status">
+            {{#str}} chooser:noresults, mod_edpreset {{/str}}
+        </div>
+
+        <div class="edpreset-groups" data-region="groups">
+            {{#groups}}
+                <div class="card mb-2 edpreset-group" data-region="group" data-groupkey="{{key}}">
+                    <div class="card-header p-0">
+                        {{! No data-parent: a filter has to be able to open several groups at once. }}
+                        <a class="btn btn-link btn-block text-start d-flex align-items-center p-2 icons-collapse-expand {{^expanded}}collapsed{{/expanded}}"
+                           data-toggle="collapse"
+                           data-action="togglegroup"
+                           href="#edpreset-group-{{key}}-{{uniqid}}"
+                           role="button"
+                           aria-expanded="{{#expanded}}true{{/expanded}}{{^expanded}}false{{/expanded}}"
+                           aria-controls="edpreset-group-{{key}}-{{uniqid}}"
+                        >
+                            <span class="expanded-icon icon-no-margin p-1" title="{{#str}} chooser:collapsesection, mod_edpreset, {{name}} {{/str}}">
+                                {{#pix}} t/expandedchevron, core {{/pix}}
+                            </span>
+                            <span class="collapsed-icon icon-no-margin p-1" title="{{#str}} chooser:expandsection, mod_edpreset, {{name}} {{/str}}">
+                                <span class="dir-rtl-hide">{{#pix}} t/collapsedchevron, core {{/pix}}</span>
+                                <span class="dir-ltr-hide">{{#pix}} t/collapsedchevron_rtl, core {{/pix}}</span>
+                            </span>
+                            {{#starred}}<span class="edpreset-group-star me-1">{{#pix}} i/star, core {{/pix}}</span>{{/starred}}
+                            <span class="edpreset-group-name h5 mb-0">{{name}}</span>
+                            <span class="edpreset-tag ms-2" data-region="groupcount" aria-hidden="true">{{count}}</span>
+                        </a>
+                    </div>
+                    <div id="edpreset-group-{{key}}-{{uniqid}}" class="collapse {{#expanded}}show{{/expanded}}">
+                        <div class="card-body edpreset-cards">
+                            {{#cards}}
+                                {{> mod_edpreset/chooser_card }}
+                            {{/cards}}
+                        </div>
+                    </div>
+                </div>
+            {{/groups}}
+        </div>
+
+        <div class="edpreset-progress d-none" data-region="progress" role="status" aria-live="polite">
+            {{#progress}}
+                {{> core/progress_bar }}
+            {{/progress}}
+        </div>
+
+        {{< core/sticky_footer }}
+            {{$stickyclasses}} justify-content-between {{/stickyclasses}}
+            {{$stickycontent}}
+                <button type="button"
+                        class="btn btn-secondary"
+                        data-action="clearfilters"
+                        disabled
+                >{{#str}} chooser:clearfilters, mod_edpreset {{/str}}</button>
+                <button type="button"
+                        class="btn btn-primary"
+                        data-action="addselected"
+                        disabled
+                >{{#str}} chooser:addselectednone, mod_edpreset {{/str}}</button>
+            {{/stickycontent}}
+        {{/ core/sticky_footer }}
+    {{/hasgroups}}
+
+    {{^hasgroups}}
+        <div class="alert alert-info">{{#str}} chooser:nopresets, mod_edpreset {{/str}}</div>
+    {{/hasgroups}}
+</div>
+{{#js}}
+require(['mod_edpreset/chooser'], function(chooser) {
+    chooser.init();
+});
+{{/js}}

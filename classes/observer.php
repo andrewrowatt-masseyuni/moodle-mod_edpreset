@@ -32,7 +32,6 @@ use mod_edpreset\local\template;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class observer {
-
     /**
      * An activity was added to the template course.
      *
@@ -70,6 +69,10 @@ class observer {
         if (!self::concerns_template_course($event)) {
             return;
         }
+
+        // XMLDB foreign keys are not enforced by the database, so nothing cascades the curator's
+        // preset details away with the activity they describe.
+        meta::delete_for_cm((int)$event->objectid);
 
         $preset = preset::get_record(['templatecmid' => (int)$event->objectid]);
         if ($preset) {
@@ -111,7 +114,7 @@ class observer {
         }
 
         $cm = get_coursemodule_from_id('', $context->instanceid, 0, false, IGNORE_MISSING);
-        if (!$cm || (int)$cm->course !== template::get_courseid()) {
+        if (!$cm || !template::is_template_course((int)$cm->course)) {
             return;
         }
 
@@ -124,13 +127,22 @@ class observer {
      * @param \core\event\course_deleted $event The event.
      */
     public static function course_deleted(\core\event\course_deleted $event): void {
-        if ((int)$event->objectid !== template::get_courseid()) {
+        global $DB;
+
+        if (!template::is_template_course((int)$event->objectid)) {
             return;
         }
 
         foreach (preset::get_records(['templatecourseid' => (int)$event->objectid]) as $preset) {
             baker::delete_preset($preset);
         }
+
+        // Deleting a course removes its modules without necessarily leaving anything behind to
+        // match on, so the preset details are swept by orphan-hood rather than by course.
+        $DB->delete_records_select(
+            meta::TABLE,
+            'cmid NOT IN (SELECT id FROM {course_modules})'
+        );
     }
 
     /**
@@ -144,8 +156,6 @@ class observer {
             return false;
         }
 
-        $templatecourseid = template::get_courseid();
-
-        return $templatecourseid > 0 && (int)$event->courseid === $templatecourseid;
+        return template::is_template_course((int)$event->courseid);
     }
 }

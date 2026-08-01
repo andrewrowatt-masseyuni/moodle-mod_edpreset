@@ -10,3 +10,128 @@
         color: #0007;
     }
 }
+
+/*
+ * The "Preset details" group on an activity's settings form.
+ *
+ * The border is drawn across a run of separate mform rows rather than around a wrapping element:
+ * the fields are spliced in one at a time with insertElementBefore(), which only handles named
+ * elements, so there is no wrapper to put a border on. Each row carries these classes through the
+ * element's `parentclass` attribute.
+ */
+.edpreset-detail {
+    border-left: 1px solid var(--bs-border-color, #dee2e6);
+    border-right: 1px solid var(--bs-border-color, #dee2e6);
+    margin-bottom: 0;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.edpreset-detail-first {
+    border-top: 1px solid var(--bs-border-color, #dee2e6);
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+    padding-top: 1rem;
+}
+
+.edpreset-detail-first .col-form-label {
+    font-size: 1.171875rem;
+    font-weight: 500;
+}
+
+.edpreset-detail-last {
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    border-bottom-left-radius: 0.5rem;
+    border-bottom-right-radius: 0.5rem;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* The preset activities page. */
+
+.edpreset-chooser .edpreset-tagbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.edpreset-chooser .edpreset-tagbar-label {
+    font-size: 0.875rem;
+    color: #6a737b;
+    margin-right: 0.25rem;
+}
+
+/*
+ * A single neutral pill, deliberately not one of Bootstrap's badge-* colours: the tags are a
+ * flat vocabulary with no ranking between them, so colouring them would imply one.
+ */
+.edpreset-chooser .edpreset-tag {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    font-size: 0.75rem;
+    font-weight: 400;
+    line-height: 1.4;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border: 1px solid rgba(125, 125, 125, 0.35);
+    border-radius: 10rem;
+    background-color: rgba(125, 125, 125, 0.12);
+    color: inherit;
+    cursor: pointer;
+}
+
+.edpreset-chooser button.edpreset-tag:hover,
+.edpreset-chooser button.edpreset-tag:focus {
+    background-color: rgba(125, 125, 125, 0.25);
+}
+
+.edpreset-chooser .edpreset-tag-active {
+    background-color: rgba(125, 125, 125, 0.55);
+    border-color: rgba(125, 125, 125, 0.75);
+}
+
+.edpreset-chooser .edpreset-group-name {
+    font-weight: 400;
+}
+
+.edpreset-chooser .edpreset-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1rem;
+}
+
+.edpreset-chooser .edpreset-card {
+    height: 100%;
+}
+
+.edpreset-chooser .edpreset-card-selected {
+    border-color: #0f6cbf;
+    box-shadow: 0 0 0 2px rgba(15, 108, 191, 0.35);
+}
+
+.edpreset-chooser .edpreset-card-description {
+    font-size: 0.875rem;
+
+    max-height: 7.5rem;
+    overflow-y: auto;
+}
+
+.edpreset-chooser .edpreset-card-description > :last-child {
+    margin-bottom: 0;
+}
+
+.edpreset-chooser .edpreset-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+/* Only one of the two star glyphs is ever shown; which one is driven by the button's state. */
+.edpreset-chooser .edpreset-card-star[data-favourited="1"] .edpreset-star-off,
+.edpreset-chooser .edpreset-card-star[data-favourited="0"] .edpreset-star-on,
+.edpreset-chooser .edpreset-card-select[data-selected="1"] .edpreset-select-add,
+.edpreset-chooser .edpreset-card-select[data-selected="0"] .edpreset-select-remove {
+    display: none;
+}

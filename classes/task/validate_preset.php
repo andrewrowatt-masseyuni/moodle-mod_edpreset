@@ -28,7 +28,6 @@ use mod_edpreset\preset;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class validate_preset extends adhoc_task {
-
     #[\Override]
     public function get_name(): string {
         return get_string('task:validatepreset', 'mod_edpreset');

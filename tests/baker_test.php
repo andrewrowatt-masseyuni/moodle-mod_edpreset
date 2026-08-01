@@ -29,7 +29,6 @@ use mod_edpreset\local\template;
  * @covers     \mod_edpreset\observer
  */
 final class baker_test extends \advanced_testcase {
-
     /**
      * Load the backup and restore APIs.
      */
@@ -47,24 +46,37 @@ final class baker_test extends \advanced_testcase {
      */
     protected function make_template_course(): \stdClass {
         $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
         $this->setAdminUser();
 
         $course = $generator->create_course(['numsections' => 3, 'format' => 'topics']);
 
-        // Section 0 is reserved for curator instructions and must never become a preset.
-        $generator->create_module('page', [
+        // Section 0 is reserved for curator instructions and must never become a preset. It gets
+        // metadata anyway, so these tests prove the section gate rather than the metadata gate.
+        $instructions = $generator->create_module('page', [
             'course' => $course->id, 'section' => 0, 'name' => 'How to use this course',
         ]);
+        $plugingenerator->create_metadata((int)$instructions->cmid, ['presetname' => 'How to use this course']);
 
-        $generator->create_module('assign', [
-            'course' => $course->id, 'section' => 1, 'name' => 'Reflective journal',
-        ]);
-        $generator->create_module('forum', [
-            'course' => $course->id, 'section' => 1, 'name' => 'Discussion starter',
-        ]);
-        $generator->create_module('quiz', [
-            'course' => $course->id, 'section' => 2, 'name' => 'Practice quiz',
-        ]);
+        // The generator's create_module() does not run the form's post actions, so the data that makes
+        // an activity an exemplar has to be written alongside it. The preset name is set to the
+        // activity name here so these tests read naturally; a dedicated test below proves the two
+        // are genuinely independent.
+        $activities = [
+            ['assign', 1, 'Reflective journal', 'Assessment, Reflection'],
+            ['forum', 1, 'Discussion starter', 'Engage with content'],
+            ['quiz', 2, 'Practice quiz', 'Assessment'],
+        ];
+        foreach ($activities as [$modname, $sectionnum, $name, $tags]) {
+            $module = $generator->create_module($modname, [
+                'course' => $course->id, 'section' => $sectionnum, 'name' => $name,
+            ]);
+            $plugingenerator->create_metadata((int)$module->cmid, [
+                'presetname' => $name,
+                'description' => "Use *$name* when you want to.",
+                'tags' => $tags,
+            ]);
+        }
 
         // Name the sections; these become the preset categories.
         $formatactions = \core_courseformat\formatactions::section($course);
@@ -112,20 +124,92 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
-     * The category also lands in the description, which is what makes it searchable.
+     * The tags also land in the chooser's description, which is what makes them searchable there.
      *
-     * The chooser's search matches descriptions as well as titles, so this is how a teacher can
-     * find every activity in a pedagogical category without a dedicated tab.
+     * The chooser's search matches descriptions as well as titles, so this is how a teacher finds
+     * a preset by tag in the standard chooser without any change to core.
      */
-    public function test_category_is_searchable_via_the_description(): void {
+    public function test_tags_are_searchable_via_the_description(): void {
         $this->resetAfterTest();
-        set_config('showcategoryinhelp', 1, 'mod_edpreset');
         $this->make_template_course();
 
         baker::rebuild();
 
         $journal = preset::get_record(['title' => 'Reflective journal']);
-        $this->assertStringContainsString('Formative assessment', $journal->get('help'));
+        $this->assertStringContainsString('Reflection', $journal->get('help'));
+        $this->assertStringContainsString('Reflective journal', $journal->get('help'));
+    }
+
+    /**
+     * An activity with no preset details is not an exemplar and is not scanned.
+     */
+    public function test_uncurated_activities_are_not_presets(): void {
+        $this->resetAfterTest();
+        $course = $this->make_template_course();
+
+        // A colleague parks something in the template course without filling the form in - or an
+        // exemplar arrives by duplicate/import/restore, none of which run the form's post actions.
+        $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id, 'section' => 1, 'name' => 'Work in progress',
+        ]);
+        rebuild_course_cache($course->id, true);
+
+        $result = baker::rebuild();
+
+        $this->assertSame(3, $result['scanned']);
+        $titles = array_map(fn($p) => $p->get('title'), preset::get_records());
+        $this->assertNotContains('Work in progress', $titles);
+    }
+
+    /**
+     * The preset name is the curator's, not the exemplar's activity name.
+     *
+     * An inline rename on the course page fires course_module_updated without running the settings
+     * form's post actions, so deriving the title from $cm->name would let a rename silently change
+     * what every teacher on the site sees.
+     */
+    public function test_preset_name_is_independent_of_the_activity_name(): void {
+        $this->resetAfterTest();
+        $course = $this->make_template_course();
+
+        $module = $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id, 'section' => 2, 'name' => 'AR-2024-week-3-draft',
+        ]);
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata(
+            (int)$module->cmid,
+            ['presetname' => 'Weekly reading']
+        );
+        rebuild_course_cache($course->id, true);
+
+        baker::rebuild();
+
+        $preset = preset::get_record(['templatecmid' => (int)$module->cmid]);
+        $this->assertSame('Weekly reading', $preset->get('title'));
+
+        set_coursemodule_name((int)$module->cmid, 'Renamed again');
+        baker::rebuild();
+
+        $this->assertSame(
+            'Weekly reading',
+            preset::get_record(['templatecmid' => (int)$module->cmid])->get('title')
+        );
+    }
+
+    /**
+     * The curator's details are copied onto the preset, with the description rendered once.
+     */
+    public function test_details_are_denormalised_onto_the_preset(): void {
+        $this->resetAfterTest();
+        $this->make_template_course();
+
+        baker::rebuild();
+
+        $journal = preset::get_record(['title' => 'Reflective journal']);
+
+        $this->assertSame('Assessment, Reflection', $journal->get('tags'));
+        // Markdown is rendered at bake time, not at display time.
+        $this->assertStringContainsString('<em>Reflective journal</em>', $journal->get('description'));
+        $this->assertStringNotContainsString('*Reflective journal*', $journal->get('description'));
     }
 
     /**
@@ -188,16 +272,25 @@ final class baker_test extends \advanced_testcase {
         $preset = preset::get_record(['title' => 'Reflective journal']);
         $presetid = (int)$preset->get('id');
 
-        // Star it, as a user would.
+        // Star it in both places a star can live: the standard chooser's, in system context, and
+        // the preset chooser page's, in the user's own context.
+        $admin = get_admin();
         $DB->insert_record('favourite', (object)[
             'component' => 'core_course',
             'itemtype' => 'contentitem_mod_edpreset',
             'itemid' => $presetid,
             'contextid' => \context_system::instance()->id,
-            'userid' => get_admin()->id,
+            'userid' => $admin->id,
             'timecreated' => time(),
             'timemodified' => time(),
         ]);
+        \core_favourites\service_factory::get_service_for_user_context(\context_user::instance($admin->id))
+            ->create_favourite(
+                preset::FAVOURITE_COMPONENT,
+                preset::FAVOURITE_ITEMTYPE,
+                $presetid,
+                \context_user::instance($admin->id)
+            );
 
         course_delete_module((int)$preset->get('templatecmid'));
         rebuild_course_cache($course->id, true);
@@ -208,6 +301,11 @@ final class baker_test extends \advanced_testcase {
         $this->assertFalse($DB->record_exists('favourite', [
             'component' => 'core_course',
             'itemtype' => 'contentitem_mod_edpreset',
+            'itemid' => $presetid,
+        ]));
+        $this->assertFalse($DB->record_exists('favourite', [
+            'component' => preset::FAVOURITE_COMPONENT,
+            'itemtype' => preset::FAVOURITE_ITEMTYPE,
             'itemid' => $presetid,
         ]));
     }
@@ -300,11 +398,15 @@ final class baker_test extends \advanced_testcase {
 
         $preset = preset::get_record(['title' => 'Reflective journal']);
         $presetid = (int)$preset->get('id');
+        $cmid = (int)$preset->get('templatecmid');
 
-        $this->deliver_events(fn() => course_delete_module((int)$preset->get('templatecmid')));
+        $this->deliver_events(fn() => course_delete_module($cmid));
         rebuild_course_cache($course->id, true);
 
         $this->assertFalse(preset::get_record(['id' => $presetid]));
+        // Nothing in the database cascades the curator's details away with the activity, so the
+        // observer has to. A leftover row would resurrect the preset if the cmid were ever reused.
+        $this->assertFalse(meta::exists_for_cm($cmid));
     }
 
     /**

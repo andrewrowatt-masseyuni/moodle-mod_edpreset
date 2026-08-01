@@ -54,8 +54,19 @@ class preset extends persistent {
     /** @var string File area holding the validated, live archive the chooser offers. */
     public const FILEAREA_BACKUP = 'presetbackup';
 
-    /** @var string File area holding a copy of the exemplar's intro files, served to all users. */
-    public const FILEAREA_HELP = 'presethelp';
+    /**
+     * Component the preset chooser page's stars are recorded against.
+     *
+     * Deliberately this plugin's own rather than core_course's: the standard chooser's stars are
+     * keyed on content item ids and only cover the presets it offers, whereas these have to cover
+     * the ones it does not.
+     *
+     * @var string
+     */
+    public const FAVOURITE_COMPONENT = 'mod_edpreset';
+
+    /** @var string Item type the preset chooser page's stars are recorded against. */
+    public const FAVOURITE_ITEMTYPE = 'preset';
 
     /**
      * Define the properties of this persistent.
@@ -71,6 +82,11 @@ class preset extends persistent {
             'contextid' => ['type' => PARAM_INT],
             'title' => ['type' => PARAM_TEXT],
             'help' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
+            // Cleaned HTML, rendered from the curator's markdown at bake time. PARAM_RAW because
+            // the cleaning has already happened; it must never be re-cleaned or escaped here.
+            'description' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
+            'tags' => ['type' => PARAM_TEXT, 'default' => ''],
+            'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
             'icon' => ['type' => PARAM_SAFEDIR, 'default' => 'monologo'],
             'archetype' => ['type' => PARAM_INT, 'default' => MOD_ARCHETYPE_OTHER],
             'purpose' => ['type' => PARAM_ALPHA, 'default' => MOD_PURPOSE_OTHER],
@@ -148,8 +164,8 @@ class preset extends persistent {
     /**
      * Get this preset's archive from one of the plugin's system-context file areas.
      *
-     * Neither backup area is served by edpreset_pluginfile(), so there is no URL that reaches
-     * these files.
+     * This plugin serves no files at all - it has no pluginfile callback - so there is no URL that
+     * reaches any of these archives.
      *
      * @param string $filearea One of the FILEAREA_* constants.
      * @return stored_file|false
@@ -164,6 +180,29 @@ class preset extends persistent {
             false
         );
         return $files ? reset($files) : false;
+    }
+
+    /**
+     * The exemplar module's icon, as rendered HTML.
+     *
+     * Not stored on the record: the markup embeds $CFG->wwwroot and the theme revision, so it is
+     * regenerated per request.
+     *
+     * @return string
+     */
+    public function get_icon_html(): string {
+        global $OUTPUT;
+
+        $modname = $this->get('modname');
+        // Modules without a monologo icon must not have the colour filter applied to them.
+        $iconclass = \core_component::has_monologo_icon('mod', $modname) ? '' : 'nofilter';
+
+        return $OUTPUT->pix_icon(
+            $this->get('icon'),
+            '',
+            $modname,
+            ['class' => "mod_edpreset-icon activityicon $iconclass"]
+        );
     }
 
     /**

@@ -45,6 +45,29 @@ class template {
     }
 
     /**
+     * Every configured template course id.
+     *
+     * There is one today. Everything that asks "is this a template course?" goes through here or
+     * through is_template_course(), so adding a second is a change to these two methods and the
+     * admin setting, not to every caller.
+     *
+     * @return int[]
+     */
+    public static function get_courseids(): array {
+        return array_values(array_filter([self::get_courseid()]));
+    }
+
+    /**
+     * Whether a course is one of the template courses.
+     *
+     * @param int $courseid The course id.
+     * @return bool
+     */
+    public static function is_template_course(int $courseid): bool {
+        return $courseid > 0 && in_array($courseid, self::get_courseids(), true);
+    }
+
+    /**
      * The template course record, or null if unset or the course has since been deleted.
      *
      * Deliberately not get_course(): its second argument is $clone, not a strictness flag, so it
@@ -82,6 +105,19 @@ class template {
      * @return int
      */
     public static function first_scanned_section(): int {
+        return 1;
+    }
+
+    /**
+     * The section whose presets go into the standard activity chooser.
+     *
+     * Everything above it is reached through the preset chooser page instead. The split exists
+     * because the standard chooser shows every item at once, so it stops being usable once the
+     * template course grows past a handful of exemplars.
+     *
+     * @return int
+     */
+    public static function priority_section(): int {
         return 1;
     }
 }

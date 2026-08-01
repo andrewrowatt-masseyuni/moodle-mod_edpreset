@@ -159,6 +159,12 @@ class activity_copier {
         int $beforemod = 0,
         ?progress_base $progress = null
     ): cm_info {
+        global $CFG;
+
+        // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
+        // bootstrap - so an external function reaching here has nothing loaded.
+        require_once($CFG->dirroot . '/course/lib.php');
+
         if (!$preset->is_live()) {
             throw new moodle_exception('backupstale', 'mod_edpreset');
         }
@@ -171,6 +177,14 @@ class activity_copier {
             0,
             $progress
         );
+
+        // Before the modinfo read below, not after: set_coursemodule_name() purges and rebuilds
+        // the course cache, so a rename afterwards would leave the returned cm_info holding the
+        // exemplar's name - which is exactly what the caller displays.
+        $defaultname = trim((string)$preset->get('defaultname'));
+        if ($defaultname !== '') {
+            set_coursemodule_name($newcmid, $defaultname);
+        }
 
         return get_fast_modinfo($course->id)->get_cm($newcmid);
     }

@@ -34,7 +34,6 @@ use mod_edpreset\local\template;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class reconcile_presets extends scheduled_task {
-
     #[\Override]
     public function get_name(): string {
         return get_string('task:reconcilepresets', 'mod_edpreset');

@@ -15,7 +15,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for the activity preset provider.
+ * External functions used by the preset chooser page.
+ *
+ * Both are ajax-only: they exist for that page's JavaScript, not as a public API, so neither is
+ * added to any service.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -24,12 +27,18 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'mod_edpreset';
-$plugin->release = '0.2.0';
-$plugin->version = 2026080100;
-$plugin->requires = 2024100700;
-// Pinned to 4.5 deliberately: this plugin depends on the legacy get_course_content_items
-// callback, which Moodle has been migrating to the hook API. Do not widen this without
-// re-checking that callback still exists and is still dispatched.
-$plugin->supported = [405, 405];
-$plugin->maturity = MATURITY_ALPHA;
+$functions = [
+    'mod_edpreset_copy_preset' => [
+        'classname' => 'mod_edpreset\external\copy_preset',
+        'description' => 'Copy a preset activity into a course without opening its settings form.',
+        'type' => 'write',
+        'capabilities' => 'moodle/course:manageactivities, moodle/restore:restoretargetimport',
+        'ajax' => true,
+    ],
+    'mod_edpreset_set_favourite' => [
+        'classname' => 'mod_edpreset\external\set_favourite',
+        'description' => 'Star or unstar a preset activity for the current user.',
+        'type' => 'write',
+        'ajax' => true,
+    ],
+];

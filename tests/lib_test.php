@@ -17,6 +17,7 @@
 namespace mod_edpreset;
 
 use core_course\local\factory\content_item_service_factory;
+use mod_edpreset\local\chooser;
 
 /**
  * Tests for the chooser provider callbacks and the module's core integration.
@@ -73,7 +74,8 @@ final class lib_test extends \advanced_testcase {
         $items = $service->get_content_items_for_user_in_course($teacher, $course);
 
         $ours = array_filter($items, fn($item) => $item->componentname === 'mod_edpreset');
-        $this->assertCount(count($presets), $ours);
+        // The priority-section presets, plus the placeholder that opens the preset chooser page.
+        $this->assertCount(count($presets) + 1, $ours);
     }
 
     /**
@@ -81,6 +83,7 @@ final class lib_test extends \advanced_testcase {
      *
      * The chooser keys its item map on componentname + link, and resolves favourite toggles by
      * matching on name, so a collision in either would make two presets share a favourite star.
+     * The placeholder is included deliberately: it must not collide with a preset either.
      */
     public function test_item_ids_names_and_links_are_unique(): void {
         [$course, $teacher, , $presets] = $this->setup_site(4);
@@ -91,7 +94,7 @@ final class lib_test extends \advanced_testcase {
             fn($item) => $item->componentname === 'mod_edpreset'
         ));
 
-        $this->assertCount(count($presets), $items);
+        $this->assertCount(count($presets) + 1, $items);
         $this->assertSameSize($items, array_unique(array_column($items, 'id')));
         $this->assertSameSize($items, array_unique(array_column($items, 'name')));
         $this->assertSameSize($items, array_unique(array_column($items, 'link')));
@@ -116,8 +119,75 @@ final class lib_test extends \advanced_testcase {
             $withsection = $item->link . '&section=3&beforemod=0';
             parse_str(parse_url($withsection, PHP_URL_QUERY), $params);
             $this->assertSame('3', $params['section']);
-            $this->assertArrayHasKey('preset', $params);
+
+            if ((int)$item->id === chooser::PLACEHOLDER_ID) {
+                // The placeholder opens the preset chooser page rather than copying anything.
+                $this->assertArrayNotHasKey('preset', $params);
+                $this->assertStringContainsString('/mod/edpreset/chooser.php', $item->link);
+            } else {
+                $this->assertArrayHasKey('preset', $params);
+            }
         }
+    }
+
+    /**
+     * The placeholder must be offered, and must be offered with id -1.
+     *
+     * -1 is what makes course_content_item_exporter mark it as a legacy item, which is what
+     * suppresses its favourite star. Any other id would render a star for an item that is
+     * deliberately absent from get_all_content_items(), and starring it would then resolve
+     * through array_search() to a completely unrelated module.
+     */
+    public function test_placeholder_is_offered_without_a_star(): void {
+        [$course, $teacher] = $this->setup_site(1);
+
+        $service = content_item_service_factory::get_content_item_service();
+        $items = array_filter(
+            $service->get_content_items_for_user_in_course($teacher, $course),
+            fn($item) => $item->componentname === 'mod_edpreset'
+        );
+
+        $placeholders = array_filter($items, fn($item) => (int)$item->id === chooser::PLACEHOLDER_ID);
+        $this->assertCount(1, $placeholders);
+
+        $placeholder = reset($placeholders);
+        $this->assertTrue($placeholder->legacyitem);
+        $this->assertSame(get_string('chooser:placeholdertitle', 'mod_edpreset'), $placeholder->title);
+        $this->assertSame(MOD_ARCHETYPE_OTHER, (int)$placeholder->archetype);
+    }
+
+    /**
+     * Only the priority section reaches the standard chooser; the rest reach the page.
+     */
+    public function test_only_priority_section_presets_reach_the_standard_chooser(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $course = $generator->create_course();
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+
+        $priority = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 1,
+        ]);
+        $onpage = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+        ]);
+
+        $service = content_item_service_factory::get_content_item_service();
+        $ids = array_column(array_filter(
+            $service->get_content_items_for_user_in_course($teacher, $course),
+            fn($item) => $item->componentname === 'mod_edpreset'
+        ), 'id');
+
+        $this->assertContains((int)$priority->get('id'), $ids);
+        $this->assertNotContains((int)$onpage->get('id'), $ids);
+
+        $pageids = array_map(fn($p) => (int)$p->get('id'), chooser::get_page_presets());
+        $this->assertSame([(int)$onpage->get('id')], $pageids);
     }
 
     /**
@@ -136,20 +206,34 @@ final class lib_test extends \advanced_testcase {
     }
 
     /**
-     * get_all_content_items() must return the same ids as the in-course list.
+     * Everything starrable in the standard chooser must appear in get_all_content_items().
      *
      * content_item_service::add_to_user_favourites() resolves the favourited item by running
      * array_search() over the ids from get_all_content_items(). A preset missing there makes
      * array_search() return false, and $items[false] silently yields a different item.
+     *
+     * The placeholder is the one exception, and is excluded from the check rather than from the
+     * rule: it renders without a star, so nothing can ask to favourite it.
      */
-    public function test_all_content_items_match_course_content_items(): void {
-        [$course, $teacher] = $this->setup_site(3);
+    public function test_starrable_items_are_all_in_the_all_items_list(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $course = $generator->create_course();
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+
+        // Presets on both sides of the split, so this covers the superset relationship too.
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 1]);
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 1]);
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 4]);
 
         $service = content_item_service_factory::get_content_item_service();
 
         $incourse = array_filter(
             $service->get_content_items_for_user_in_course($teacher, $course),
-            fn($item) => $item->componentname === 'mod_edpreset'
+            fn($item) => $item->componentname === 'mod_edpreset' && !$item->legacyitem
         );
         $all = array_filter(
             $service->get_all_content_items($teacher),
@@ -158,9 +242,11 @@ final class lib_test extends \advanced_testcase {
 
         $incourseids = array_column($incourse, 'id');
         $allids = array_column($all, 'id');
-        sort($incourseids);
-        sort($allids);
-        $this->assertSame($incourseids, $allids);
+
+        $this->assertNotEmpty($incourseids);
+        $this->assertEmpty(array_diff($incourseids, $allids));
+        // The page's presets are in the all-items list but not in the course list.
+        $this->assertCount(3, $allids);
     }
 
     /**
@@ -189,7 +275,7 @@ final class lib_test extends \advanced_testcase {
         $service = content_item_service_factory::get_content_item_service();
         $ours = array_filter(
             $service->get_content_items_for_user_in_course($teacher, $course),
-            fn($item) => $item->componentname === 'mod_edpreset'
+            fn($item) => $item->componentname === 'mod_edpreset' && !$item->legacyitem
         );
 
         $this->assertCount(1, $ours);
@@ -250,7 +336,8 @@ final class lib_test extends \advanced_testcase {
             fn($item) => $item->componentname === 'mod_edpreset'
         );
 
-        $this->assertCount(2, $ours());
+        // Two presets plus the placeholder.
+        $this->assertCount(3, $ours());
 
         $roleid = $this->getDataGenerator()->create_role();
         role_assign($roleid, $teacher->id, \context_course::instance($course->id));
