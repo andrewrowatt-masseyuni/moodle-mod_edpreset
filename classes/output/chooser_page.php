@@ -179,6 +179,9 @@ class chooser_page implements renderable, templatable {
         $card->description = $description;
         $card->icon = $preset->get_icon_html();
         $card->modname = $preset->get('modname');
+        // The human-readable activity type, e.g. "Assignment" for mod_assign. Same source core
+        // uses for the activity icon's tooltip on the course page.
+        $card->modfullname = get_string('modulename', 'mod_' . $preset->get('modname'));
         $card->purpose = $preset->get('purpose');
         $card->branded = (bool)$preset->get('branded');
         $card->favourited = in_array($presetid, $favourites, true);
