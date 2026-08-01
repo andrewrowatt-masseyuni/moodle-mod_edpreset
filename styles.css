@@ -185,6 +185,7 @@
     border: 0;
     background: transparent;
     box-shadow: none;
+    /* stylelint-disable-next-line declaration-no-important */
     margin-bottom: 1.75rem !important;
 }
 
@@ -193,11 +194,13 @@
     border: 0;
     border-bottom: 1px solid #edf0f4;
     border-radius: 0;
+    /* stylelint-disable-next-line declaration-no-important */
     padding: 0 !important;
 }
 
 .edpreset-chooser .edpreset-group > .card-header > a {
     color: var(--edpreset-accent);
+    /* stylelint-disable-next-line declaration-no-important */
     padding-bottom: 0.55rem !important;
 }
 
@@ -249,7 +252,9 @@
 
 /* Activity icon in a soft tile; Moodle keeps its own purpose colour. */
 .edpreset-chooser .edpreset-card-icon {
+    /* stylelint-disable-next-line declaration-no-important */
     width: 20px !important;
+    /* stylelint-disable-next-line declaration-no-important */
     height: 20px !important;
     display: flex;
     align-items: center;
@@ -259,7 +264,9 @@
     background: #f1f3f7;
 
     img.icon.mod_edpreset-icon.activityicon {
+        /* stylelint-disable-next-line declaration-no-important */
         width: 20px !important;
+        /* stylelint-disable-next-line declaration-no-important */
         height: 20px !important;
     }
 }
@@ -285,6 +292,7 @@
 }
 
 .edpreset-chooser .edpreset-card-star.text-primary {
+    /* stylelint-disable-next-line declaration-no-important */
     color: var(--edpreset-accent) !important;
 }
 
