@@ -74,6 +74,9 @@ final class baker_test extends \advanced_testcase {
             $plugingenerator->create_metadata((int)$module->cmid, [
                 'presetname' => $name,
                 'description' => "Use *$name* when you want to.",
+                // Only one exemplar carries guidance, so the tests can tell the rendered and the
+                // absent cases apart.
+                'teacherguidance' => $name === 'Reflective journal' ? 'Set the **due date** first.' : '',
                 'tags' => $tags,
             ]);
         }
@@ -210,6 +213,27 @@ final class baker_test extends \advanced_testcase {
         // Markdown is rendered at bake time, not at display time.
         $this->assertStringContainsString('<em>Reflective journal</em>', $journal->get('description'));
         $this->assertStringNotContainsString('*Reflective journal*', $journal->get('description'));
+    }
+
+    /**
+     * Guidance is rendered like the description, and stays empty rather than becoming an empty
+     * paragraph when the curator left it blank.
+     *
+     * mod_ednote and emit_note() both treat "has guidance" as a simple emptiness test, so an
+     * empty string that format_text() had wrapped in <p></p> would make every preset emit a note.
+     */
+    public function test_guidance_is_rendered_and_stays_empty_when_unset(): void {
+        $this->resetAfterTest();
+        $this->make_template_course();
+
+        baker::rebuild();
+
+        $journal = preset::get_record(['title' => 'Reflective journal']);
+        $this->assertStringContainsString('<strong>due date</strong>', $journal->get('teacherguidance'));
+        $this->assertStringNotContainsString('**due date**', $journal->get('teacherguidance'));
+
+        $discussion = preset::get_record(['title' => 'Discussion starter']);
+        $this->assertSame('', $discussion->get('teacherguidance'));
     }
 
     /**

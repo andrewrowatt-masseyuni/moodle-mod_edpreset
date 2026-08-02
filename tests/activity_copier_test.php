@@ -365,4 +365,171 @@ final class activity_copier_test extends \advanced_testcase {
         $this->expectException(\moodle_exception::class);
         activity_copier::copy($preset, $course, 1);
     }
+
+    /**
+     * The notes in a course, in the order they appear in their section.
+     *
+     * @param stdClass $course The course.
+     * @param int $sectionnum The section to look in.
+     * @return \cm_info[]
+     */
+    protected function section_modules($course, int $sectionnum): array {
+        $modinfo = get_fast_modinfo($course);
+
+        $cms = [];
+        foreach ($modinfo->sections[$sectionnum] ?? [] as $cmid) {
+            $cms[] = $modinfo->get_cm($cmid);
+        }
+
+        return $cms;
+    }
+
+    /**
+     * A preset with guidance drops a teacher note in above the activity.
+     */
+    public function test_guidance_emits_a_note_above_the_activity(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('teacherguidance', '<p>Set the due date first.</p>');
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        $cm = activity_copier::copy($preset, $course, 1);
+
+        $modules = $this->section_modules($course, 1);
+        $this->assertCount(2, $modules);
+        $this->assertSame('ednote', $modules[0]->modname, 'the note belongs above the activity');
+        $this->assertSame((int)$cm->id, (int)$modules[1]->id);
+
+        // Linked to the preset rather than carrying a copy, so later edits reach it...
+        $note = \mod_ednote\guidance::for_cm((int)$course->id, (int)$modules[0]->id);
+        $this->assertSame((int)$preset->get('id'), $note->presetid);
+        $this->assertStringContainsString('Set the due date first.', $note->content);
+
+        // ...but a snapshot is stored too, for the day mod_edpreset or the preset is not there.
+        $this->assertStringContainsString(
+            'Set the due date first.',
+            $this->note_record($modules[0])->intro
+        );
+    }
+
+    /**
+     * The note is a normal visible activity, hidden from students by capability instead.
+     */
+    public function test_the_emitted_note_is_not_a_hidden_activity(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('teacherguidance', '<p>Guidance.</p>');
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        activity_copier::copy($preset, $course, 1);
+
+        $note = $this->section_modules($course, 1)[0];
+        $this->assertSame('ednote', $note->modname);
+        $this->assertEquals(1, $note->visible);
+
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $this->assertFalse(get_fast_modinfo($course, $student->id)->get_cm($note->id)->uservisible);
+    }
+
+    /**
+     * A preset with no guidance copies exactly as before.
+     */
+    public function test_no_guidance_emits_no_note(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        activity_copier::copy($preset, $course, 1);
+
+        $modules = $this->section_modules($course, 1);
+        $this->assertCount(1, $modules);
+        $this->assertSame('assign', $modules[0]->modname);
+    }
+
+    /**
+     * Guidance that is only whitespace is treated as none at all.
+     */
+    public function test_blank_guidance_emits_no_note(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('teacherguidance', "   \n  ");
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        activity_copier::copy($preset, $course, 1);
+
+        $this->assertCount(1, $this->section_modules($course, 1));
+    }
+
+    /**
+     * Without mod_ednote the copy still works; it just arrives without its note.
+     *
+     * This is what lets mod_edpreset declare no dependency on mod_ednote. Simulated by taking the
+     * module out of the modules table, which is what course_allowed_module() consults.
+     */
+    public function test_copy_still_works_when_ednote_is_unavailable(): void {
+        global $DB;
+
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('teacherguidance', '<p>Guidance.</p>');
+        $preset->update();
+
+        $DB->set_field('modules', 'visible', 0, ['name' => 'ednote']);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        $cm = activity_copier::copy($preset, $course, 1);
+
+        $this->assertSame('assign', $cm->modname);
+        $this->assertCount(1, $this->section_modules($course, 1));
+    }
+
+    /**
+     * Validating a preset must not leave notes behind in the sandbox course.
+     *
+     * The validator shares restore_into() rather than copy(), which is the only thing keeping the
+     * two apart - so this asserts the note is emitted by the outer call and not the inner one.
+     */
+    public function test_restore_into_alone_emits_no_note(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->bake_exemplar();
+
+        $preset->set('teacherguidance', '<p>Guidance.</p>');
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        activity_copier::restore_into($preset->get_live_file(), $course, 1);
+
+        $this->assertCount(1, $this->section_modules($course, 1));
+    }
+
+    /**
+     * The stored note record behind a course module.
+     *
+     * @param \cm_info $cm The note's course module.
+     * @return \stdClass
+     */
+    protected function note_record(\cm_info $cm): \stdClass {
+        global $DB;
+
+        return $DB->get_record('ednote', ['id' => $cm->instance], '*', MUST_EXIST);
+    }
 }

@@ -92,6 +92,7 @@ $string['managepresets'] = 'Manage preset activities';
 $string['modulename'] = 'Activity preset provider';
 $string['modulename_help'] = 'This is not an activity you add to a course. It supplies preset activities to the activity chooser, based on the exemplar activities held in a designated template course.';
 $string['modulenameplural'] = 'Activity preset providers';
+$string['notename'] = 'Teacher guidance: {$a}';
 $string['novalidationarchive'] = 'There is no candidate backup to validate.';
 $string['noviewpage'] = 'The activity preset provider has no view page.';
 $string['pluginadministration'] = 'Activity preset provider administration';
@@ -111,6 +112,10 @@ $string['presetname_help'] = 'The name teachers see when choosing this preset. K
 $string['presetnametoolong'] = 'The preset name must be {$a} characters or fewer.';
 $string['presettags'] = 'Preset tags';
 $string['presettags_help'] = 'A comma-separated list of words or short phrases, for example: Assessment, Engage with content, Content packages. Teachers can filter the preset list by these.';
+$string['presetteacherguidance'] = 'Teacher guidance';
+$string['presetteacherguidance_help'] = 'Optional guidance and next steps for the teacher who adds this preset, for example what to set before releasing it to students. Markdown formatting is allowed.
+
+Students never see this. It is shown on the preset list before the preset is added, and added to the course as a teacher-only note above the activity. Editing it here updates every note already in a course.';
 $string['privacy:metadata:favourites'] = 'Preset activities a user has starred on the preset activities page.';
 $string['privacy:metadata:preference:collapsed'] = 'Which groups of preset activities the user has collapsed on the preset activities page.';
 $string['privacy:path:favourites'] = 'Starred preset activities';

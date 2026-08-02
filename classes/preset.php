@@ -85,6 +85,9 @@ class preset extends persistent {
             // Cleaned HTML, rendered from the curator's markdown at bake time. PARAM_RAW because
             // the cleaning has already happened; it must never be re-cleaned or escaped here.
             'description' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
+            // Cleaned HTML like description, but read live by mod_ednote rather than copied into
+            // the note, so that editing the exemplar's guidance reaches notes already in courses.
+            'teacherguidance' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
             'icon' => ['type' => PARAM_SAFEDIR, 'default' => 'monologo'],

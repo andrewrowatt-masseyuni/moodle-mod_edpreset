@@ -186,7 +186,73 @@ class activity_copier {
             set_coursemodule_name($newcmid, $defaultname);
         }
 
+        // Here rather than in restore_into(), which the validator's test restore also goes through:
+        // the sandbox course must not collect a teacher note on every validation pass.
+        self::emit_note($preset, $course, $sectionnum, $newcmid);
+
         return get_fast_modinfo($course->id)->get_cm($newcmid);
+    }
+
+    /**
+     * Add a teacher note above a newly copied activity, if the preset has guidance to show.
+     *
+     * The note carries the preset id rather than the guidance itself, so that later edits in the
+     * template course reach every course that has already added this preset. The guidance is also
+     * written into the note's own body as a fallback, for the case where mod_ednote outlives
+     * mod_edpreset or the preset is deleted.
+     *
+     * Silently does nothing when mod_ednote is not available. That is the whole reason this plugin
+     * declares no dependency on it: a site can run mod_edpreset alone and simply not get notes.
+     *
+     * @param preset $preset The preset being copied.
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section the activity was placed in.
+     * @param int $activitycmid The course module id of the activity the note belongs above.
+     * @return int|null The note's course module id, or null if no note was added.
+     */
+    protected static function emit_note(preset $preset, stdClass $course, int $sectionnum, int $activitycmid): ?int {
+        global $CFG;
+
+        $guidance = trim((string)$preset->get('teacherguidance'));
+        if ($guidance === '') {
+            return null;
+        }
+
+        // One call covering three things: mod_ednote is installed, it is enabled, and this user is
+        // allowed to add one here. Mirrors how access.php gates copying itself.
+        if (!course_allowed_module($course, 'ednote')) {
+            return null;
+        }
+
+        require_once($CFG->dirroot . '/course/modlib.php');
+
+        $note = (object)[
+            'modulename' => 'ednote',
+            'course' => $course->id,
+            'section' => $sectionnum,
+            'visible' => 1,
+            'name' => get_string('notename', 'mod_edpreset', $preset->get('title')),
+            'presetid' => (int)$preset->get('id'),
+            // Core's create_module() insists on the editor-shaped field for any module that
+            // supports an intro, and add_moduleinfo() unpacks it back into intro/introformat.
+            // Passing a plain intro instead throws createmodulemissingattribut.
+            //
+            // The text is already cleaned HTML - mod_edpreset renders the curator's markdown once,
+            // at bake time - so it is stored as-is rather than run through a format again.
+            'introeditor' => [
+                'text' => $guidance,
+                'format' => FORMAT_HTML,
+                'itemid' => 0,
+            ],
+        ];
+
+        $created = create_module($note);
+
+        // Above the activity it describes. create_module() appends to the section, so this is a
+        // second move rather than a placement.
+        self::place($course, (int)$created->coursemodule, $sectionnum, $activitycmid);
+
+        return (int)$created->coursemodule;
     }
 
     /**

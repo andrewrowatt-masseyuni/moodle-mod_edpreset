@@ -159,6 +159,7 @@ function edpreset_get_form_fieldmap(): array {
     return [
         'edpreset_presetname' => 'presetname',
         'edpreset_description' => 'presetdescription',
+        'edpreset_teacherguidance' => 'presetteacherguidance',
         'edpreset_tags' => 'presettags',
         'edpreset_defaultname' => 'presetdefaultname',
     ];
@@ -242,6 +243,16 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             ),
             ['rows' => 5, 'cols' => 60]
         ),
+        'edpreset_teacherguidance' => $mform->createElement(
+            'textarea',
+            'edpreset_teacherguidance',
+            get_string('presetteacherguidance', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetteacherguidance_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['rows' => 8, 'cols' => 60]
+        ),
         'edpreset_tags' => $mform->createElement(
             'text',
             'edpreset_tags',
@@ -304,6 +315,8 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     // format_text(..., ['noclean' => false]) - the same point at which it becomes visible to
     // anyone outside this course.
     $mform->setType('edpreset_description', PARAM_RAW);
+    // Markdown too, and cleaned at the same point, for the same reason.
+    $mform->setType('edpreset_teacherguidance', PARAM_RAW);
     $mform->setType('edpreset_tags', PARAM_TEXT);
     $mform->setType('edpreset_defaultname', PARAM_TEXT);
 
@@ -318,6 +331,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     if ($meta) {
         $mform->setDefault('edpreset_presetname', $meta->get('presetname'));
         $mform->setDefault('edpreset_description', $meta->get('description'));
+        $mform->setDefault('edpreset_teacherguidance', $meta->get('teacherguidance'));
         $mform->setDefault('edpreset_tags', $meta->get('tags'));
         $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
     }
@@ -394,6 +408,7 @@ function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
     $meta->set('cmid', $cmid);
     $meta->set('presetname', trim((string)$moduleinfo->edpreset_presetname));
     $meta->set('description', trim((string)($moduleinfo->edpreset_description ?? '')));
+    $meta->set('teacherguidance', trim((string)($moduleinfo->edpreset_teacherguidance ?? '')));
     $meta->set('tags', \mod_edpreset\meta::normalise_tags((string)($moduleinfo->edpreset_tags ?? '')));
     $meta->set('defaultname', trim((string)($moduleinfo->edpreset_defaultname ?? '')));
 

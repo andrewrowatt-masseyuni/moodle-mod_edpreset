@@ -149,6 +149,26 @@
     margin-bottom: 0;
 }
 
+.edpreset-chooser .edpreset-card-guidance {
+    font-size: 0.875rem;
+}
+
+.edpreset-chooser .edpreset-card-guidance > summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.edpreset-chooser .edpreset-card-guidance-body {
+    /* Matches the description's cap so one long note cannot stretch the card past its neighbours. */
+    max-height: 7.5rem;
+    margin-top: 0.25rem;
+    overflow-y: auto;
+}
+
+.edpreset-chooser .edpreset-card-guidance-body > :last-child {
+    margin-bottom: 0;
+}
+
 .edpreset-chooser .edpreset-tags {
     display: flex;
     flex-wrap: wrap;

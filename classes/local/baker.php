@@ -169,6 +169,7 @@ class baker {
         // called this week.
         $preset->set('title', $details->get('presetname'));
         $preset->set('description', self::render_description($details));
+        $preset->set('teacherguidance', self::render_guidance($details));
         $preset->set('tags', $details->get('tags'));
         $preset->set('defaultname', $details->get('defaultname'));
         $preset->set('category', $category);
@@ -203,6 +204,32 @@ class baker {
     protected static function render_description(meta $details): string {
         return format_text(
             (string)$details->get('description'),
+            FORMAT_MARKDOWN,
+            ['context' => \context_system::instance(), 'noclean' => false]
+        );
+    }
+
+    /**
+     * Turn the curator's guidance markdown into the cleaned HTML teachers are shown.
+     *
+     * Cleaned at bake time for the same reason as the description, and it matters more here: this
+     * HTML is emitted unescaped into every course that has a note for this preset.
+     *
+     * Unlike the description, guidance is optional. Returning '' rather than letting format_text()
+     * wrap nothing in a paragraph is what lets callers treat "has guidance" as a simple emptiness
+     * test - emit_note() and mod_ednote both rely on that.
+     *
+     * @param meta $details The curator's preset details.
+     * @return string Cleaned HTML, or '' when the curator entered no guidance.
+     */
+    protected static function render_guidance(meta $details): string {
+        $guidance = trim((string)$details->get('teacherguidance'));
+        if ($guidance === '') {
+            return '';
+        }
+
+        return format_text(
+            $guidance,
             FORMAT_MARKDOWN,
             ['context' => \context_system::instance(), 'noclean' => false]
         );

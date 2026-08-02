@@ -133,6 +133,10 @@ class mod_edpreset_generator extends testing_module_generator {
             'cmid' => $cmid,
             'presetname' => 'Test preset ' . $counter,
             'description' => 'Description of test preset ' . $counter,
+            // Deliberately empty by default, like defaultname: guidance is optional, and a
+            // non-empty value makes every copy emit a teacher note. Only the tests about that
+            // should opt in.
+            'teacherguidance' => '',
             'tags' => '',
             // Deliberately empty by default: a non-empty value renames every copied activity, and
             // that should only happen in the tests that are about it.

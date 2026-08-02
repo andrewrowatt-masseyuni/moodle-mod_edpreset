@@ -59,6 +59,9 @@ class meta extends persistent {
             // Raw markdown as the curator typed it. PARAM_TEXT would mangle the syntax, so the
             // cleaning happens once, at bake time, via format_text(..., ['noclean' => false]).
             'description' => ['type' => PARAM_RAW],
+            // Also raw markdown, cleaned at bake time for the same reason. Optional, unlike
+            // description: a preset with nothing useful to tell the teacher emits no note at all.
+            'teacherguidance' => ['type' => PARAM_RAW, 'default' => ''],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
         ];

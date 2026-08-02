@@ -195,12 +195,17 @@ class chooser_page implements renderable, templatable {
     protected function export_card(preset $preset, array $favourites): stdClass {
         $presetid = (int)$preset->get('id');
         $description = (string)$preset->get('description');
+        $guidance = (string)$preset->get('teacherguidance');
         $tags = meta::split_tags((string)$preset->get('tags'));
 
         $card = new stdClass();
         $card->presetid = $presetid;
         $card->title = $preset->get('title');
         $card->description = $description;
+        // Already cleaned at bake time, so the template renders it unescaped - same contract as
+        // description. Collapsed behind a disclosure so long guidance does not distort the grid.
+        $card->teacherguidance = $guidance;
+        $card->hasguidance = $guidance !== '';
         $card->icon = $preset->get_icon_html();
         $card->modname = $preset->get('modname');
         // The human-readable activity type, e.g. "Assignment" for mod_assign. Same source core
@@ -216,7 +221,12 @@ class chooser_page implements renderable, templatable {
         // Everything the in-page text filter matches against, flattened once here so the browser
         // does not have to walk the DOM for it on every keystroke.
         $card->searchtext = \core_text::strtolower(
-            trim($card->title . ' ' . html_to_text($description, 0, false) . ' ' . implode(' ', $tags))
+            trim(
+                $card->title
+                . ' ' . html_to_text($description, 0, false)
+                . ' ' . html_to_text($guidance, 0, false)
+                . ' ' . implode(' ', $tags)
+            )
         );
         $card->tagkeys = \core_text::strtolower(implode('|', $tags));
 

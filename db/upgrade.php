@@ -29,5 +29,27 @@
  * @return bool
  */
 function xmldb_edpreset_upgrade($oldversion) {
+    global $DB;
+
+    $dbman = $DB->get_manager();
+
+    if ($oldversion < 2026080200) {
+        // Optional teacher-facing guidance: raw markdown on the curator's row, cleaned HTML on the
+        // derived row. Both nullable - unlike description, guidance is optional.
+        $table = new xmldb_table('edpreset_meta');
+        $field = new xmldb_field('teacherguidance', XMLDB_TYPE_TEXT, null, null, null, null, null, 'description');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $table = new xmldb_table('edpreset_item');
+        $field = new xmldb_field('teacherguidance', XMLDB_TYPE_TEXT, null, null, null, null, null, 'description');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_mod_savepoint(true, 2026080200, 'edpreset');
+    }
+
     return true;
 }

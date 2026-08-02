@@ -27,6 +27,8 @@
     * presetid int
     * title string
     * description string - already cleaned HTML, rendered unescaped
+    * teacherguidance string - already cleaned HTML, rendered unescaped
+    * hasguidance bool
     * icon string - pre-rendered icon HTML
     * modname string
     * modfullname string - the human-readable activity type, e.g. "Assignment"
@@ -44,6 +46,8 @@
         "presetid": 7,
         "title": "Reflective journal",
         "description": "<p>Use this for a weekly reflection.</p>",
+        "teacherguidance": "<p>Set the due date before releasing this to students.</p>",
+        "hasguidance": true,
         "icon": "<img src='#' alt=''>",
         "modname": "assign",
         "modfullname": "Assignment",
@@ -96,6 +100,15 @@
         </div>
 
         <div class="edpreset-card-description flex-grow-1">{{{description}}}</div>
+
+        {{#hasguidance}}
+            {{! A plain disclosure rather than a Bootstrap collapse: no JS, no ids to keep unique
+                across the two copies a starred preset is rendered as. }}
+            <details class="edpreset-card-guidance mt-2">
+                <summary>{{#str}} presetteacherguidance, mod_edpreset {{/str}}</summary>
+                <div class="edpreset-card-guidance-body">{{{teacherguidance}}}</div>
+            </details>
+        {{/hasguidance}}
 
         {{#hastags}}
             <div class="edpreset-tags mt-2">

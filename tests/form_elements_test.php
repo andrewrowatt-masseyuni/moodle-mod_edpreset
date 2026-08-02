@@ -40,6 +40,7 @@ final class form_elements_test extends \advanced_testcase {
         'edpreset_detailsheading',
         'edpreset_presetname',
         'edpreset_description',
+        'edpreset_teacherguidance',
         'edpreset_tags',
         'edpreset_defaultname',
     ];
@@ -263,6 +264,7 @@ final class form_elements_test extends \advanced_testcase {
             1 => [['modname' => 'page', 'name' => 'Exemplar page', 'meta' => [
                 'presetname' => 'Weekly reading',
                 'description' => 'Use this for a **weekly** reading.',
+                'teacherguidance' => 'Set the **due date** before releasing.',
                 'tags' => 'Content, Engage with content',
                 'defaultname' => 'This week\'s reading',
             ]]],
@@ -279,6 +281,10 @@ final class form_elements_test extends \advanced_testcase {
 
         $this->assertSame('Weekly reading', $mform->getElement('edpreset_presetname')->getValue());
         $this->assertSame('Use this for a **weekly** reading.', $mform->getElement('edpreset_description')->getValue());
+        $this->assertSame(
+            'Set the **due date** before releasing.',
+            $mform->getElement('edpreset_teacherguidance')->getValue()
+        );
         $this->assertSame('Content, Engage with content', $mform->getElement('edpreset_tags')->getValue());
         $this->assertSame("This week's reading", $mform->getElement('edpreset_defaultname')->getValue());
     }
@@ -310,6 +316,15 @@ final class form_elements_test extends \advanced_testcase {
         $this->assertArrayHasKey('edpreset_presetname', $errors);
         $this->assertArrayHasKey('edpreset_defaultname', $errors);
         $this->assertArrayNotHasKey('edpreset_description', $errors);
+
+        // Guidance is optional, so an otherwise complete form with none of it must still pass.
+        $errors = mod_edpreset_coursemodule_validation($form, [
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => 'Use this for a weekly reading.',
+            'edpreset_teacherguidance' => '',
+            'edpreset_defaultname' => '',
+        ]);
+        $this->assertSame([], $errors);
 
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => 'Weekly reading',
@@ -349,6 +364,7 @@ final class form_elements_test extends \advanced_testcase {
             'modulename' => 'page',
             'edpreset_presetname' => 'Weekly reading',
             'edpreset_description' => 'Use this for a weekly reading.',
+            'edpreset_teacherguidance' => '  Set the due date before releasing.  ',
             // Duplicates differing only in case collapse to the first spelling seen.
             'edpreset_tags' => ' Content ,, engage with content, CONTENT ',
             'edpreset_defaultname' => 'This week\'s reading',
@@ -360,6 +376,7 @@ final class form_elements_test extends \advanced_testcase {
         $stored = meta::get_for_cm((int)$page->cmid);
         $this->assertNotNull($stored);
         $this->assertSame('Weekly reading', $stored->get('presetname'));
+        $this->assertSame('Set the due date before releasing.', $stored->get('teacherguidance'));
         $this->assertSame('Content, engage with content', $stored->get('tags'));
 
         $moduleinfo->edpreset_presetname = 'Weekly reading, revised';
