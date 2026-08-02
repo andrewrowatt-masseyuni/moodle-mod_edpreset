@@ -13,7 +13,7 @@
             "MOODLE_DOCKER_DB": "pgsql"
         }
     },
-    "edpresets": [
+    "tasks": [
         {
             "label": "Run PHP Lint",
             "type": "shell",
