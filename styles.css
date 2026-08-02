@@ -155,7 +155,13 @@
 
 .edpreset-chooser .edpreset-card-guidance > summary {
     cursor: pointer;
-    font-weight: 600;
+
+    /* To make mod_ednote */
+    font-weight: 500;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #12545f;
 }
 
 .edpreset-chooser .edpreset-card-guidance-body {
