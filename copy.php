@@ -77,15 +77,16 @@ if (!$lock) {
     throw new moodle_exception('copyinprogress', 'mod_edpreset');
 }
 
+// Prints nothing - not even the page header - for the first few seconds, so a fast copy stays
+// invisible and the redirect below can still be a real 303. A slow one prints the header and the
+// standard restore progress bar. See copy_progress for why the header cannot be printed up front.
+$progress = new \mod_edpreset\local\copy_progress(
+    get_string('creatingactivity', 'mod_edpreset', $preset->get('title')),
+    get_string('copyingactivity', 'mod_edpreset')
+);
+$progress->set_display_names();
+
 try {
-    echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('creatingactivity', 'mod_edpreset', $preset->get('title')));
-
-    // Emits nothing for the first few seconds, so a fast copy stays invisible and the redirect
-    // below is a real 303. A slow one shows the standard restore progress bar instead.
-    $progress = new \core\progress\display_if_slow(get_string('copyingactivity', 'mod_edpreset'));
-    $progress->set_display_names();
-
     $cm = activity_copier::copy($preset, $course, $sectionnum, $beforemod, $progress);
 } finally {
     $lock->release();
@@ -100,4 +101,21 @@ $params = ['update' => $cm->id, 'return' => 0];
 if ($sectionreturn !== null) {
     $params['sr'] = $sectionreturn;
 }
-redirect(new moodle_url('/course/modedit.php', $params));
+$target = new moodle_url('/course/modedit.php', $params);
+
+// The common case: nothing has been sent, so this is a genuine 303 and the teacher never sees an
+// intermediate page at all.
+if (!$progress->has_printed_header()) {
+    redirect($target);
+}
+
+// A slow copy has already committed a progress bar to the browser, and no Location header can
+// follow that. Finish the page with a scripted redirect and a link for anyone without JavaScript,
+// rather than calling redirect() and having it report the output we chose to emit.
+// js_amd_inline() rather than js_function_call(), which core's own redirect_message() still uses
+// but which is deprecated.
+$PAGE->requires->js_amd_inline(
+    'document.location.replace(' . json_encode($target->out(false)) . ');'
+);
+echo $OUTPUT->continue_button($target);
+echo $OUTPUT->footer();
