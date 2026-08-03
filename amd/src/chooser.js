@@ -14,7 +14,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Filtering, starring and batch adding on the preset activities page.
+ * Filtering, starring and selecting on the preset activities page.
+ *
+ * Adding is a plain form post to copy.php, so nothing here submits anything: the selection is kept
+ * in a hidden field and the sticky footer's button is an ordinary submit.
  *
  * @module     mod_edpreset/chooser
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -35,7 +38,7 @@ const SELECTORS = {
     GROUPS: '[data-region="groups"]',
     GROUPCOUNT: '[data-region="groupcount"]',
     NORESULTS: '[data-region="noresults"]',
-    PROGRESS: '[data-region="progress"]',
+    PRESETS: '[data-region="presets"]',
     TAGBAR: '[data-region="tagbar"]',
     SEARCH: '[data-action="search"]',
     CLEARSEARCH: '[data-action="clearsearch"]',
@@ -45,7 +48,6 @@ const SELECTORS = {
     SELECT: '[data-action="select"]',
     FAVOURITE: '[data-action="favourite"]',
     TOGGLEGROUP: '[data-action="togglegroup"]',
-    PROGRESSBAR: '#edpreset-progress',
 };
 
 const PREFERENCE_COLLAPSED = 'mod_edpreset_collapsed';
@@ -210,6 +212,10 @@ const toggleSelected = (presetid) => {
         button.setAttribute('aria-pressed', nowSelected ? 'true' : 'false');
     });
 
+    // What the form actually posts. PARAM_SEQUENCE on the other end, and the insertion order of a
+    // Set is the order the teacher chose, which is the order the activities end up in.
+    root.querySelector(SELECTORS.PRESETS).value = Array.from(selected).join(',');
+
     refreshAddButton().catch(Notification.exception);
 };
 
@@ -261,67 +267,6 @@ const saveCollapsed = () => {
     }
 
     setUserPreference(PREFERENCE_COLLAPSED, value).catch(Notification.exception);
-};
-
-/**
- * Add every selected preset to the course, one at a time, then leave for the course page.
- *
- * The copies are sequential rather than parallel on purpose: each one takes an exclusive per-user
- * lock, so firing them together would just make all but the first fail.
- *
- * @returns {Promise<void>}
- */
-const addSelected = async() => {
-    const ids = Array.from(selected);
-
-    // One selection behaves exactly like the card's own button: it ends on the new activity's
-    // settings form, which is the whole reason a teacher would add just one.
-    if (ids.length === 1) {
-        const card = root.querySelector(`${SELECTORS.CARD}[data-presetid="${ids[0]}"] [data-action="addone"]`);
-        window.location = card.href;
-        return;
-    }
-
-    const pending = new Pending('mod_edpreset/chooser:addselected');
-    const progress = root.querySelector(SELECTORS.PROGRESS);
-    const bar = root.querySelector(SELECTORS.PROGRESSBAR);
-
-    progress.classList.remove('d-none');
-    root.querySelector(SELECTORS.ADDSELECTED).disabled = true;
-    root.querySelector(SELECTORS.CLEARFILTERS).disabled = true;
-
-    const courseid = parseInt(root.dataset.courseid, 10);
-    const sectionnum = parseInt(root.dataset.sectionnum, 10);
-    const beforemod = parseInt(root.dataset.beforemod, 10);
-
-    const update = (message, percent, error) => {
-        bar.dispatchEvent(new CustomEvent('update', {
-            detail: {message, percent, estimate: '', error: error ? 1 : 0},
-        }));
-    };
-
-    for (let done = 0; done < ids.length; done++) {
-        const title = root.querySelector(`${SELECTORS.CARD}[data-presetid="${ids[done]}"]`).dataset.title;
-        update(title, (done / ids.length) * 100, false);
-
-        try {
-            await fetchMany([{
-                methodname: 'mod_edpreset_copy_preset',
-                args: {courseid, presetid: ids[done], sectionnum, beforemod},
-            }])[0];
-        } catch (error) {
-            // Whatever has already been copied is really in the course, so the page stays put and
-            // says so rather than navigating away and losing the explanation.
-            update(error.message ?? '', ((done + 1) / ids.length) * 100, true);
-            Notification.exception(error);
-            pending.resolve();
-            return;
-        }
-    }
-
-    update('', 100, false);
-    pending.resolve();
-    window.location = root.dataset.returnurl;
 };
 
 /**
@@ -401,11 +346,6 @@ export const init = () => {
             clearSearch?.classList.add('d-none');
             refreshTagButtons();
             applyFilters();
-            return;
-        }
-
-        if (event.target.closest(SELECTORS.ADDSELECTED)) {
-            addSelected().catch(Notification.exception);
             return;
         }
 

@@ -80,6 +80,50 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
+     * Bake several live presets out of one template course, named "Exemplar 1", "Exemplar 2", ...
+     *
+     * Pages rather than assignments: these tests are about how a batch is placed, and a page is the
+     * cheapest thing to back up and restore several times over.
+     *
+     * @param int $count How many presets to bake.
+     * @return preset[] The presets, in name order.
+     */
+    protected function bake_exemplars(int $count): array {
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $generator->create_course(['numsections' => 2]);
+        set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
+        set_config('enabled', 1, 'mod_edpreset');
+        $this->setAdminUser();
+
+        $presets = [];
+        for ($i = 1; $i <= $count; $i++) {
+            $module = $generator->create_module('page', [
+                'course' => $templatecourse->id,
+                'section' => 1,
+                'name' => 'Exemplar ' . $i,
+            ]);
+            $cm = get_coursemodule_from_instance('page', $module->id, $templatecourse->id);
+
+            $preset = $plugingenerator->create_preset([
+                'templatecourseid' => $templatecourse->id,
+                'templatecmid' => $cm->id,
+                'modname' => 'page',
+                'instanceid' => $module->id,
+                'contextid' => \context_module::instance($cm->id)->id,
+                'title' => 'Exemplar ' . $i,
+                'live' => false,
+            ]);
+
+            $this->promote($preset, backup_baker::bake($preset));
+            $presets[] = $preset;
+        }
+
+        return $presets;
+    }
+
+    /**
      * Move a staged archive into the live area, as the validator does once it has proven it.
      *
      * @param preset $preset The preset.
@@ -250,6 +294,83 @@ final class activity_copier_test extends \advanced_testcase {
             [(int)$cm->id, (int)$existing->cmid],
             array_map('intval', array_values($sequence))
         );
+    }
+
+    /**
+     * Several presets land in the order they were selected.
+     *
+     * The copies all share one $beforemod, and course_add_cm_to_section() splices each new module
+     * in immediately before it, so a later copy lands after an earlier one rather than in front of
+     * it. Getting this backwards would silently reverse every batch.
+     */
+    public function test_copy_many_lands_in_selection_order(): void {
+        $this->resetAfterTest();
+        $presets = $this->bake_exemplars(3);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
+
+        $result = activity_copier::copy_many($presets, $course, 2);
+
+        $this->assertCount(3, $result['added']);
+        $this->assertSame([], $result['failed']);
+        $this->assertSame(
+            ['Exemplar 1', 'Exemplar 2', 'Exemplar 3'],
+            array_map(fn($cm) => $cm->name, $result['added'])
+        );
+        $this->assertSame(
+            array_map(fn($cm) => (int)$cm->id, $result['added']),
+            array_map('intval', array_values(get_fast_modinfo($course)->sections[2]))
+        );
+    }
+
+    /**
+     * A batch inserted before an existing activity stays in order, and stays ahead of it.
+     */
+    public function test_copy_many_respects_beforemod(): void {
+        $this->resetAfterTest();
+        $presets = $this->bake_exemplars(3);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $existing = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
+        $this->setAdminUser();
+
+        $result = activity_copier::copy_many($presets, $course, 1, $existing->cmid);
+
+        $expected = array_map(fn($cm) => (int)$cm->id, $result['added']);
+        $expected[] = (int)$existing->cmid;
+
+        $this->assertSame($expected, array_map('intval', array_values(get_fast_modinfo($course)->sections[1])));
+    }
+
+    /**
+     * One preset failing must not cost the teacher the rest of the batch.
+     *
+     * Nothing wraps a restore in a transaction, so whatever has already been copied is really in
+     * the course by the time a later one throws. Abandoning the remainder would only add a second
+     * kind of partial result; the caller is told what landed and what did not instead.
+     */
+    public function test_copy_many_continues_past_a_failure(): void {
+        $this->resetAfterTest();
+        $presets = $this->bake_exemplars(3);
+
+        // Break the middle one, exactly as a re-bake in flight would: the file no longer matches
+        // the hash the record claims, so is_live() is false and copy() refuses it.
+        $presets[1]->set('backupcontenthash', sha1('a different archive entirely'));
+        $presets[1]->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $result = activity_copier::copy_many($presets, $course, 1);
+
+        $this->assertDebuggingCalledCount(1);
+        $this->assertSame(['Exemplar 2'], $result['failed']);
+        $this->assertSame(
+            ['Exemplar 1', 'Exemplar 3'],
+            array_map(fn($cm) => $cm->name, $result['added'])
+        );
+        $this->assertCount(2, get_fast_modinfo($course)->sections[1]);
     }
 
     /**

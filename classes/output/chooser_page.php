@@ -48,22 +48,17 @@ class chooser_page implements renderable, templatable {
     /** @var int Course module id to insert before, or 0 to append. */
     protected int $beforemod;
 
-    /** @var int|null The section return, if the chooser was opened from a single-section page. */
-    protected ?int $sectionreturn;
-
     /**
      * Constructor.
      *
      * @param stdClass $course The target course.
      * @param int $sectionnum The section the activity chooser was opened from.
      * @param int $beforemod Course module id to insert before, or 0 to append.
-     * @param int|null $sectionreturn The section return, or null.
      */
-    public function __construct(stdClass $course, int $sectionnum, int $beforemod = 0, ?int $sectionreturn = null) {
+    public function __construct(stdClass $course, int $sectionnum, int $beforemod = 0) {
         $this->course = $course;
         $this->sectionnum = $sectionnum;
         $this->beforemod = $beforemod;
-        $this->sectionreturn = $sectionreturn;
     }
 
     /**
@@ -123,43 +118,10 @@ class chooser_page implements renderable, templatable {
         $data->sesskey = sesskey();
         $data->alltags = $this->export_tags($presets);
         $data->hastags = !empty($data->alltags);
-        $data->returnurl = $this->return_url()->out(false);
-        // The core/progress_bar template renders its own inline script keyed on these, and listens
-        // for an "update" DOM event, so the batch add only has to dispatch events at it.
-        $data->progress = (object)[
-            'idnumber' => 'edpreset-progress',
-            'id' => 0,
-            'value' => 0,
-            'error' => 0,
-        ];
+        // Where the page's form posts the selection. The ids themselves are filled in client-side.
+        $data->copyurl = (new moodle_url('/mod/edpreset/copy.php'))->out(false);
 
         return $data;
-    }
-
-    /**
-     * Where the browser is sent once a batch add has finished.
-     *
-     * The single-section page, not the course page. get_view_url() without 'navigation' returns
-     * the course page carrying expandsection= and a #section-N fragment, and neither reliably puts
-     * the teacher in front of what they just added: expandsection only un-collapses a section that
-     * was collapsed to begin with (see core_courseformat\output\local\content\section), so on an
-     * ordinary course it does nothing at all, and the fragment is resolved before the reactive
-     * course editor has finished rendering the sections it points at. The result is a teacher
-     * looking at the top of their course wondering where the activities went.
-     *
-     * Section 0 has no section page worth visiting, and a section that does not exist yet has no
-     * id to link to, so both fall back to the course page.
-     *
-     * @return moodle_url
-     */
-    protected function return_url(): moodle_url {
-        $format = course_get_format($this->course);
-
-        if ($this->sectionnum > 0 && $format->get_section($this->sectionnum)) {
-            return $format->get_view_url($this->sectionnum, ['navigation' => true]);
-        }
-
-        return $format->get_view_url($this->sectionnum, ['expanded' => true]);
     }
 
     /**
@@ -253,24 +215,22 @@ class chooser_page implements renderable, templatable {
     }
 
     /**
-     * The link that adds one preset and opens its settings form.
+     * The link on a card that adds that one preset.
+     *
+     * An ordinary link to the same script the form posts to, so a single add still works with
+     * JavaScript turned off - which is the whole of what this page offers without it.
      *
      * @param int $presetid The preset id.
      * @return moodle_url
      */
     protected function add_url(int $presetid): moodle_url {
-        $params = [
-            'preset' => $presetid,
+        return new moodle_url('/mod/edpreset/copy.php', [
+            'presets' => $presetid,
             'course' => $this->course->id,
             'section' => $this->sectionnum,
             'beforemod' => $this->beforemod,
             'sesskey' => sesskey(),
-        ];
-        if ($this->sectionreturn !== null) {
-            $params['sr'] = $this->sectionreturn;
-        }
-
-        return new moodle_url('/mod/edpreset/copy.php', $params);
+        ]);
     }
 
     /**

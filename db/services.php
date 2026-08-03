@@ -17,8 +17,9 @@
 /**
  * External functions used by the preset chooser page.
  *
- * Both are ajax-only: they exist for that page's JavaScript, not as a public API, so neither is
- * added to any service.
+ * Ajax-only: this exists for that page's JavaScript, not as a public API, so it is not added to any
+ * service. Copying is not here - it is a form post to copy.php, so that one restore or ten happen
+ * in a single request rather than one per activity.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -28,13 +29,6 @@
 defined('MOODLE_INTERNAL') || die();
 
 $functions = [
-    'mod_edpreset_copy_preset' => [
-        'classname' => 'mod_edpreset\external\copy_preset',
-        'description' => 'Copy a preset activity into a course without opening its settings form.',
-        'type' => 'write',
-        'capabilities' => 'moodle/course:manageactivities, moodle/restore:restoretargetimport',
-        'ajax' => true,
-    ],
     'mod_edpreset_set_favourite' => [
         'classname' => 'mod_edpreset\external\set_favourite',
         'description' => 'Star or unstar a preset activity for the current user.',

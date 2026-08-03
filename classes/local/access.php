@@ -23,15 +23,24 @@ use stdClass;
 /**
  * The checks that must pass before a preset may be copied into a course.
  *
- * Three entry points reach the copier - the page the activity chooser links to, the preset chooser
- * page, and the external function the preset chooser page's batch add calls - and all three must
- * apply exactly the same rules, so they live here rather than in any one of them.
+ * Copying has one entry point, copy.php, reached both from the standard activity chooser and from
+ * the preset chooser page's batch add. The rules live here rather than in it so that the validator
+ * and the tests can apply the same ones.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class access {
+    /**
+     * @var int How many presets one request may copy.
+     *
+     * The restores run sequentially in the request that asked for them, so this is what stops a
+     * hand-edited URL from occupying a PHP worker - and the user's copy lock - for an hour. It is
+     * well above any plausible selection on the chooser page.
+     */
+    public const MAX_PRESETS = 20;
+
     /**
      * Require that the current user may copy a preset into a course section.
      *
@@ -64,6 +73,27 @@ class access {
         if ($sectionnum < 0 || $sectionnum > $maxsections) {
             throw new moodle_exception('maxsectionslimit', 'moodle', '', $maxsections);
         }
+    }
+
+    /**
+     * Turn the presets request parameter into a list of ids to copy, in the order asked for.
+     *
+     * @param string $sequence A PARAM_SEQUENCE list of preset ids.
+     * @return int[] The ids, deduplicated, order preserved.
+     * @throws moodle_exception If the list is empty or longer than MAX_PRESETS.
+     */
+    public static function clean_presets(string $sequence): array {
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', $sequence)))));
+
+        if (!$ids) {
+            throw new moodle_exception('invalidpreset', 'mod_edpreset');
+        }
+
+        if (count($ids) > self::MAX_PRESETS) {
+            throw new moodle_exception('toomanypresets', 'mod_edpreset', '', self::MAX_PRESETS);
+        }
+
+        return $ids;
     }
 
     /**

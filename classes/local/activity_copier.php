@@ -79,6 +79,7 @@ class activity_copier {
         $fulltempdir = make_backup_temp_directory($tempdir);
         get_file_packer('application/vnd.moodle.backup')->extract_to_pathname($mbz, $fulltempdir);
 
+        $rc = null;
         try {
             $rc = new restore_controller(
                 $tempdir,
@@ -98,7 +99,6 @@ class activity_copier {
             if (!$rc->execute_precheck()) {
                 $results = $rc->get_precheck_results();
                 if (!empty($results['errors'])) {
-                    $rc->destroy();
                     throw new moodle_exception(
                         'restoreprecheckfailed',
                         'mod_edpreset',
@@ -109,9 +109,11 @@ class activity_copier {
             }
 
             $rc->execute_plan();
+            // Before dispose() below, which empties the plan's task list and takes the only record
+            // of the new course module id with it.
             $newcmid = self::find_restored_cmid($rc);
-            $rc->destroy();
         } finally {
+            self::dispose($rc);
             if (empty($CFG->keeptempdirectoriesonbackup)) {
                 fulldelete($fulltempdir);
             }
@@ -194,6 +196,56 @@ class activity_copier {
     }
 
     /**
+     * Copy several presets into a course, one after another.
+     *
+     * One preset or ten take the same route: this is the whole of what a teacher's click does,
+     * whether it came from the activity chooser or from a batch selection on the chooser page.
+     *
+     * A preset that fails does not take the rest down with it. Nothing wraps a restore in a
+     * transaction - core does not either - so whatever has already been copied is really in the
+     * course by the time a later one throws, and abandoning the remaining presets would only add a
+     * second kind of partial result. The caller gets both lists and reports them.
+     *
+     * The presets are all copied with the same $beforemod, which is what keeps them in selection
+     * order: course_add_cm_to_section() splices each new module in immediately before $beforemod,
+     * so successive copies land after each other rather than stacking up in reverse.
+     *
+     * @param preset[] $presets The presets to copy, in the order they should appear.
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section number to place the activities in.
+     * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param progress_base|null $progress Optional progress reporter, shared by every copy.
+     * @return array{added: cm_info[], failed: string[]} The new course modules, and the titles of
+     *               the presets that could not be copied.
+     */
+    public static function copy_many(
+        array $presets,
+        stdClass $course,
+        int $sectionnum,
+        int $beforemod = 0,
+        ?progress_base $progress = null
+    ): array {
+        $added = [];
+        $failed = [];
+
+        foreach ($presets as $preset) {
+            try {
+                $added[] = self::copy($preset, $course, $sectionnum, $beforemod, $progress);
+            } catch (\Throwable $e) {
+                // The teacher is told which preset failed, but not why - the reasons are restore
+                // internals. Keep the real one where an administrator can find it.
+                $failed[] = $preset->get('title');
+                debugging(
+                    'mod_edpreset: could not copy preset ' . $preset->get('id') . ': ' . $e->getMessage(),
+                    DEBUG_NORMAL
+                );
+            }
+        }
+
+        return ['added' => $added, 'failed' => $failed];
+    }
+
+    /**
      * Add a teacher note above a newly copied activity, if the preset has guidance to show.
      *
      * The note carries the preset id rather than the guidance itself, so that later edits in the
@@ -253,6 +305,44 @@ class activity_copier {
         self::place($course, (int)$created->coursemodule, $sectionnum, $activitycmid);
 
         return (int)$created->coursemodule;
+    }
+
+    /**
+     * Tear a restore controller down, whether or not its plan ran to completion.
+     *
+     * Both halves matter only because several restores can now run in one request.
+     *
+     * backup_ids_temp and backup_files_temp are real database temp tables, and there is one pair
+     * per connection rather than one per restore. The plan's last step drops them, so a restore
+     * that threw part way through leaves them behind - and the next restore in the same request
+     * adopts them, because create_restore_temp_tables() returns early whenever the table already
+     * exists without checking whose it is. Rows are keyed by restore id so the results stay
+     * correct, but the stale rows would otherwise accumulate for the rest of the request.
+     *
+     * destroy() is what releases the plan and the logger. Its own docblock warns that a script
+     * performing several operations without it runs out of memory, which is exactly this case.
+     *
+     * @param restore_controller|null $rc The controller, or null if it never got built.
+     */
+    protected static function dispose(?restore_controller $rc): void {
+        global $DB;
+
+        if (!$rc) {
+            return;
+        }
+
+        // Ask before dropping: drop_restore_temp_tables() drops unconditionally, and on the
+        // ordinary path the plan has already done it, so this would throw ddl_table_missing.
+        if ($DB->get_manager()->table_exists('backup_ids_temp')) {
+            \restore_controller_dbops::drop_restore_temp_tables($rc->get_restoreid());
+        }
+
+        // An archive that is not moodle2 format stops at STATUS_REQUIRE_CONV, before load_plan(),
+        // and destroy() dereferences that plan unguarded. Presets are always baked by this plugin
+        // so this should not happen, but a fatal here would mask whatever really went wrong.
+        if ($rc->get_status() !== backup::STATUS_REQUIRE_CONV) {
+            $rc->destroy();
+        }
     }
 
     /**

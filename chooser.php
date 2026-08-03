@@ -17,9 +17,8 @@
 /**
  * Browse and add the preset activities that the standard activity chooser does not show.
  *
- * The standard chooser links here through a placeholder item, so section, beforemod and sr arrive
- * from the chooser JS rather than from the link this plugin minted, exactly as they do for
- * copy.php.
+ * The standard chooser links here through a placeholder item, so section and beforemod arrive from
+ * the chooser JS rather than from the link this plugin minted, exactly as they do for copy.php.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -35,7 +34,6 @@ use mod_edpreset\output\chooser_page;
 $courseid = required_param('course', PARAM_INT);
 $sectionnum = required_param('section', PARAM_INT);
 $beforemod = optional_param('beforemod', 0, PARAM_INT);
-$sectionreturn = optional_param('sr', null, PARAM_INT);
 
 $course = $DB->get_record('course', ['id' => $courseid], '*', MUST_EXIST);
 require_login($course);
@@ -53,10 +51,6 @@ if (!chooser::is_offered_in($course)) {
 
 $beforemod = access::clean_beforemod($course, $beforemod);
 
-if ($sectionreturn !== null && $sectionreturn < 0) {
-    $sectionreturn = null;
-}
-
 $PAGE->set_url(new moodle_url('/mod/edpreset/chooser.php', [
     'course' => $courseid,
     'section' => $sectionnum,
@@ -68,7 +62,7 @@ $PAGE->add_body_class('limitedwidth');
 $PAGE->set_title(get_string('chooser:pagetitle', 'mod_edpreset'));
 $PAGE->set_heading(format_string($course->fullname));
 
-$renderable = new chooser_page($course, $sectionnum, $beforemod, $sectionreturn);
+$renderable = new chooser_page($course, $sectionnum, $beforemod);
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('chooser:pagetitle', 'mod_edpreset'));
