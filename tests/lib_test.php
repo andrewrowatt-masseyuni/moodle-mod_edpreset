@@ -122,10 +122,12 @@ final class lib_test extends \advanced_testcase {
 
             if ((int)$item->id === chooser::PLACEHOLDER_ID) {
                 // The placeholder opens the preset chooser page rather than copying anything.
-                $this->assertArrayNotHasKey('preset', $params);
+                $this->assertArrayNotHasKey('presets', $params);
                 $this->assertStringContainsString('/mod/edpreset/chooser.php', $item->link);
             } else {
-                $this->assertArrayHasKey('preset', $params);
+                // Singular from the chooser, but the same list parameter copy.php takes from the
+                // preset chooser page's form.
+                $this->assertSame((string)$item->id, $params['presets']);
             }
         }
     }
@@ -154,6 +156,60 @@ final class lib_test extends \advanced_testcase {
         $this->assertTrue($placeholder->legacyitem);
         $this->assertSame(get_string('chooser:placeholdertitle', 'mod_edpreset'), $placeholder->title);
         $this->assertSame(MOD_ARCHETYPE_OTHER, (int)$placeholder->archetype);
+    }
+
+    /**
+     * Copying returns to the section page, not to the course page.
+     *
+     * The course page carrying expandsection= and a #section-N fragment is not good enough:
+     * expandsection only un-collapses a section that was collapsed to begin with, and the fragment
+     * is resolved before the reactive course editor has rendered the section it points at. Either
+     * way the teacher ends up at the top of their course.
+     */
+    public function test_return_url_is_the_section_page(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 4, 'format' => 'topics']);
+        $sectionid = get_fast_modinfo($course)->get_section_info(3)->id;
+
+        $returnurl = chooser::return_url($course, 3)->out(false);
+
+        $this->assertStringContainsString('/course/section.php', $returnurl);
+        $this->assertStringContainsString('id=' . $sectionid, $returnurl);
+    }
+
+    /**
+     * Section 0 has no section page worth visiting, so it falls back to the course page.
+     */
+    public function test_return_url_for_section_zero_is_the_course(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 4, 'format' => 'topics']);
+
+        $returnurl = chooser::return_url($course, 0)->out(false);
+
+        $this->assertStringContainsString('/course/view.php', $returnurl);
+        $this->assertStringNotContainsString('/course/section.php', $returnurl);
+    }
+
+    /**
+     * A section that does not exist has no id to link to, so it falls back to the course page.
+     *
+     * Copying creates the section it is asked for, so this is the case where nothing was created -
+     * every preset in the request failed - and there is still somewhere to send the teacher.
+     */
+    public function test_return_url_for_a_missing_section_is_the_course(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2, 'format' => 'topics']);
+
+        $returnurl = chooser::return_url($course, 5)->out(false);
+
+        $this->assertStringContainsString('/course/view.php', $returnurl);
+        $this->assertStringNotContainsString('/course/section.php', $returnurl);
     }
 
     /**

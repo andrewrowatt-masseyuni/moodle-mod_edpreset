@@ -100,6 +100,34 @@ class chooser {
     }
 
     /**
+     * Where the browser is sent once presets have been copied in.
+     *
+     * The single-section page, not the course page. get_view_url() without 'navigation' returns
+     * the course page carrying expandsection= and a #section-N fragment, and neither reliably puts
+     * the teacher in front of what they just added: expandsection only un-collapses a section that
+     * was collapsed to begin with (see core_courseformat\output\local\content\section), so on an
+     * ordinary course it does nothing at all, and the fragment is resolved before the reactive
+     * course editor has finished rendering the sections it points at. The result is a teacher
+     * looking at the top of their course wondering where the activities went.
+     *
+     * Section 0 has no section page worth visiting, and a section that does not exist yet has no
+     * id to link to, so both fall back to the course page.
+     *
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section the activities were added to.
+     * @return moodle_url
+     */
+    public static function return_url(stdClass $course, int $sectionnum): moodle_url {
+        $format = course_get_format($course);
+
+        if ($sectionnum > 0 && $format->get_section($sectionnum)) {
+            return $format->get_view_url($sectionnum, ['navigation' => true]);
+        }
+
+        return $format->get_view_url($sectionnum, ['expanded' => true]);
+    }
+
+    /**
      * The presets reached through the preset chooser page including those on the standard chooser.
      *
      * @return preset[]
@@ -247,12 +275,15 @@ class chooser {
      * It deliberately does not point at /course/mod.php, which whitelists the params it forwards
      * and would drop the preset id.
      *
+     * "presets" rather than "preset" because copy.php takes a list: one id here, several when the
+     * preset chooser page posts a batch to the same script.
+     *
      * @param preset $preset The preset.
      * @param stdClass|null $course The target course, or null when no course context is available.
      * @return moodle_url
      */
     protected static function item_link(preset $preset, ?stdClass $course): moodle_url {
-        $params = ['preset' => $preset->get('id')];
+        $params = ['presets' => $preset->get('id')];
         if ($course) {
             $params['course'] = $course->id;
             // The chooser link is minted server-side per user, so carrying a sesskey costs nothing

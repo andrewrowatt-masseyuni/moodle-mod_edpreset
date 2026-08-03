@@ -24,13 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$string['activityaddednotice'] = '{$a} has been added to your course. If you cancel on this page, the activity will still be there - delete it from the course page if you do not want it.';
+$string['activitiesadded'] = 'Added to your course: {$a}';
+$string['activitiesnotadded'] = 'Could not be added: {$a}. Please try again, and ask your administrator to check the site logs if it keeps happening.';
 $string['backupproducednofile'] = 'The backup completed but produced no file.';
 $string['backupstale'] = 'The stored backup for this preset activity is missing or out of date. It will be rebuilt automatically; please try again shortly.';
 $string['backuptoolarge'] = 'The backup is {$a}, which exceeds the configured maximum. This preset will not be offered.';
 $string['cannotcreateinstance'] = 'The activity preset provider cannot be added to a course. It exists only to supply preset activities to the activity chooser.';
 
-$string['chooser:addingprogress'] = 'Adding {$a->done} of {$a->total}';
 $string['chooser:addselected'] = 'Add {$a} items to course';
 $string['chooser:addselectednone'] = 'Add items to course';
 $string['chooser:addselectedone'] = 'Add 1 item to course';
@@ -57,6 +57,7 @@ $string['chooser:starred'] = 'Starred';
 $string['chooser:tagsheading'] = 'Filter by tag';
 $string['copyingactivity'] = 'Copying the activity into your course';
 $string['copyinprogress'] = 'Another activity is already being added. Please wait for it to finish, then try again.';
+$string['creatingactivities'] = 'Adding {$a} activities';
 $string['creatingactivity'] = 'Adding {$a}';
 $string['invalidpreset'] = 'That preset activity is not available. It may have been removed, or its backup may be in the process of being rebuilt.';
 $string['locktimeout'] = 'Another preset activity backup is in progress.';
@@ -164,6 +165,7 @@ $string['task:bakepreset'] = 'Build a preset activity backup';
 $string['task:rebuildpresets'] = 'Rescan the preset template course';
 $string['task:reconcilepresets'] = 'Rebuild preset activity backups';
 $string['task:validatepreset'] = 'Test-restore a preset activity backup';
+$string['toomanypresets'] = 'No more than {$a} preset activities can be added at once.';
 
 
 
