@@ -80,8 +80,8 @@ fill in the **Preset details** group at the top of its settings form:
 | Field | Required | Notes |
 | --- | --- | --- |
 | Preset name | yes | What teachers see. Independent of the activity's own name. |
-| Description | yes | Markdown. Shown on the preset card and in the activity chooser's info panel. |
-| Teacher guidance | no | Markdown. Becomes a teacher note above the copied activity (needs `mod_ednote`). |
+| Description | yes | Rich text. Shown on the preset card and in the activity chooser's info panel. |
+| Teacher guidance | no | Rich text. Becomes a teacher note above the copied activity (needs `mod_ednote`). |
 | Tags | no | Comma separated. Also prefixed onto the chooser description so tag search works there. |
 | Default activity name | no | The name the copied activity is given. |
 
@@ -206,7 +206,7 @@ Consequences of that shape, all of them load-bearing:
 
 | Table | Role |
 | --- | --- |
-| `edpreset_meta` | Curator input, entered on the exemplar's own settings form. **Source of truth**: an activity without a row here is not a preset. Holds raw markdown as typed. |
+| `edpreset_meta` | Curator input, entered on the exemplar's own settings form. **Source of truth**: an activity without a row here is not a preset. Holds the raw text as typed, with the format it was typed in. |
 | `edpreset_item` | Derived record, one per exemplar, rewritten wholesale by every rebuild. Holds cleaned HTML, chooser metadata, pipeline status and archive fingerprints. |
 | `edpreset` | Stub instance table (see above). Never written to. |
 
@@ -286,10 +286,24 @@ Three core callbacks extend other modules' settings forms inside the template co
   created by web service or restore without the form ever being submitted.
 * `mod_edpreset_coursemodule_edit_post_actions()` writes the `edpreset_meta` row.
 
-Markdown fields are typed `PARAM_RAW` on the form (PARAM_TEXT would mangle the syntax) and are
-rendered and cleaned exactly once, at bake time, via `format_text(…, ['noclean' => false])` — the
-point at which the text crosses out of the template course and becomes readable by everyone who can
-add an activity.
+The description and the guidance are the standard rich text editor. They are typed `PARAM_RAW` on
+the form (anything narrower strips the markup the curator just wrote) and are rendered and cleaned
+exactly once, at bake time, via `format_text(…, ['noclean' => false])` — the point at which the text
+crosses out of the template course and becomes readable by everyone who can add an activity.
+
+Each carries its own format column, and the baker renders with the format that was stored rather
+than assuming HTML: a site running the plain textarea editor is still offered the whole format menu,
+so `FORMAT_HTML` is the norm rather than a guarantee.
+
+The editors are created with `maxfiles => 0`. The plugin implements no `pluginfile` callback by
+design, so a file embedded here is a file nothing can serve; and the text is read by every teacher
+on the site, not only by whoever can reach the template course.
+
+Emptiness is `html_is_blank()`, not `trim()`. A rich text editor that has been typed into and
+emptied again holds `<p></p>` or `<p><br></p>`, neither of which is an empty string. Guidance is
+normalised to `''` on the way in and checked again at bake time, because **"has guidance" is a plain
+emptiness test** in the baker, in the copier's `emit_note()` and in `mod_ednote` — an empty
+paragraph would put a blank teacher note above every copy of the preset.
 
 ### The bake pipeline
 

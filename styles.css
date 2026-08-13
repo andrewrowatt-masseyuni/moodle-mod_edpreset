@@ -149,6 +149,35 @@
     margin-bottom: 0;
 }
 
+/*
+ * The description and the guidance are written in the standard rich text editor, so a curator can
+ * put a picture, a table or a heading in one where the old markdown textarea made that unlikely. The
+ * cards are a fixed-width grid, so anything with an intrinsic width has to be told to fit: without
+ * this a single wide image or table widens its whole grid column and every card in the row with it.
+ *
+ * The height cap above already handles length; this is only about width.
+ */
+:is(.edpreset-chooser .edpreset-card-description, .edpreset-chooser .edpreset-card-guidance-body) {
+    overflow-wrap: anywhere;
+
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+
+    table {
+        display: block;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+
+    /* A curator's h1 would otherwise outshout the card title above it. */
+    :is(h1, h2, h3, h4, h5, h6) {
+        font-size: 1rem;
+        font-weight: 500;
+    }
+}
+
 .edpreset-chooser .edpreset-card-guidance {
     font-size: 0.875rem;
 }

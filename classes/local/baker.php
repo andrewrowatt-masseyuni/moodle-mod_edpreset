@@ -260,11 +260,15 @@ class baker {
     }
 
     /**
-     * Turn the curator's markdown into the cleaned HTML shown to teachers.
+     * Turn what the curator typed into the cleaned HTML shown to teachers.
      *
      * Cleaned here, at bake time, rather than at display time: this is the point at which the text
      * crosses out of the template course and becomes readable by everyone who can add an activity,
      * and both the chooser and the preset page render it unescaped.
+     *
+     * The format comes off the row rather than being assumed. It is FORMAT_HTML for anything typed
+     * in the rich text editor, but a site running the plain textarea editor is still offered the
+     * whole format menu, so the stored format is what decides.
      *
      * @param meta $details The curator's preset details.
      * @return string Cleaned HTML.
@@ -272,33 +276,36 @@ class baker {
     protected static function render_description(meta $details): string {
         return format_text(
             (string)$details->get('description'),
-            FORMAT_MARKDOWN,
+            (int)$details->get('descriptionformat'),
             ['context' => \context_system::instance(), 'noclean' => false]
         );
     }
 
     /**
-     * Turn the curator's guidance markdown into the cleaned HTML teachers are shown.
+     * Turn the curator's guidance into the cleaned HTML teachers are shown.
      *
      * Cleaned at bake time for the same reason as the description, and it matters more here: this
      * HTML is emitted unescaped into every course that has a note for this preset.
      *
      * Unlike the description, guidance is optional. Returning '' rather than letting format_text()
      * wrap nothing in a paragraph is what lets callers treat "has guidance" as a simple emptiness
-     * test - emit_note() and mod_ednote both rely on that.
+     * test - emit_note() and mod_ednote both rely on that. The test is html_is_blank() rather than
+     * trim() because a rich text editor that has been typed into and emptied again leaves "<p></p>"
+     * behind. The settings form normalises that away before storing it, but the form is not the
+     * only thing that writes these rows, so the guarantee is made here too.
      *
      * @param meta $details The curator's preset details.
      * @return string Cleaned HTML, or '' when the curator entered no guidance.
      */
     protected static function render_guidance(meta $details): string {
-        $guidance = trim((string)$details->get('teacherguidance'));
-        if ($guidance === '') {
+        $guidance = (string)$details->get('teacherguidance');
+        if (html_is_blank($guidance)) {
             return '';
         }
 
         return format_text(
             $guidance,
-            FORMAT_MARKDOWN,
+            (int)$details->get('teacherguidanceformat'),
             ['context' => \context_system::instance(), 'noclean' => false]
         );
     }
