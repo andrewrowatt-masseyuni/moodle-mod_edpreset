@@ -39,14 +39,20 @@ class behat_mod_edpreset extends behat_base {
      * @return behat_component_named_selector[]
      */
     public static function get_partial_named_selectors(): array {
+        // data-region="card" is what the page's filter keys on, and it is not always on the card
+        // element itself: a section template wraps its card together with the note explaining why it
+        // cannot be chosen, and the wrapper is what carries the attribute. So the kind of card is
+        // decided by looking for the marker class among the descendants rather than on the matched
+        // element, which holds however the two are nested.
+        $istemplate = ".//*[contains(concat(' ', normalize-space(@class), ' '), ' edpreset-template-card ')]";
+
         $card = ".//*[@data-region='card']%extra%" .
             "[.//*[contains(concat(' ', normalize-space(@class), ' '), ' edpreset-card-title ')]" .
             "[contains(normalize-space(.), %locator%)]]";
-        $istemplate = "[contains(concat(' ', normalize-space(@class), ' '), ' edpreset-template-card ')]";
 
         return [
             new behat_component_named_selector('Section template', [
-                str_replace('%extra%', $istemplate, $card),
+                str_replace('%extra%', "[$istemplate]", $card),
             ]),
             new behat_component_named_selector('Preset', [
                 str_replace('%extra%', "[not($istemplate)]", $card),

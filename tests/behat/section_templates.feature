@@ -56,8 +56,13 @@ Feature: Add a whole section of preset activities at once
     When I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
     Then I should see "Prepare for class"
-    And "Prepare for class" "text" should appear before "Engage in class" "text"
-    And "Engage in class" "text" should appear before "Consolidate" "text"
+    # Scoped, for two reasons. The "Added to your course" notification names every added activity in
+    # one element, and the text selector matches the innermost element containing the string - so
+    # unscoped, both halves of a comparison resolve to that same notification. And [data-for=cmlist]
+    # alone is not enough: the course index drawer uses it too, and being JavaScript-only it would
+    # make a scenario pass or fail on its tags. #section-N belongs to the content area only.
+    And "Prepare for class" "text" should appear before "Engage in class" "text" in the "#section-1 [data-for='cmlist']" "css_element"
+    And "Engage in class" "text" should appear before "Consolidate" "text" in the "#section-1 [data-for='cmlist']" "css_element"
 
   Scenario: Adding a template records it as the course's default section template
     When I open the preset chooser for course "C1" section "1"
@@ -142,8 +147,9 @@ Feature: Add a whole section of preset activities at once
     And I should see "Your section will look like this"
     And I should see "Already in your course"
     And I should see "Template" in the ".edpreset-reorder-item-template" "css_element"
-    And I should see "Existing" in the ".edpreset-reorder-item-course" "css_element"
-    And I should see "My first page" in the ".modal-body" "css_element"
+    And I should see "My first page" in the ".edpreset-reorder-item-course" "css_element"
+    And ".edpreset-reorder-item-template .edpreset-reorder-handle-fixed" "css_element" should exist
+    And ".edpreset-reorder-item-course [data-drag-type='move']" "css_element" should exist
 
   @javascript
   Scenario: Confirming without dragging puts the template first and the rest below
@@ -154,6 +160,7 @@ Feature: Add a whole section of preset activities at once
     When I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
     And I click on "Add to course" "button" in the "Weekly cycle" "dialogue"
-    Then "Prepare for class" "text" should appear before "Consolidate" "text"
-    And "Consolidate" "text" should appear before "My first page" "text"
-    And "My first page" "text" should appear before "My second page" "text"
+    # Scoped for the same reasons as the earlier ordering scenario.
+    Then "Prepare for class" "text" should appear before "Consolidate" "text" in the "#section-1 [data-for='cmlist']" "css_element"
+    And "Consolidate" "text" should appear before "My first page" "text" in the "#section-1 [data-for='cmlist']" "css_element"
+    And "My first page" "text" should appear before "My second page" "text" in the "#section-1 [data-for='cmlist']" "css_element"
