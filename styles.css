@@ -102,7 +102,7 @@
     text-align: center;
     white-space: nowrap;
     vertical-align: baseline;
-    border: 1px solid rgba(125, 125, 125, 0.35);
+    border: transparent;
     border-radius: 10rem;
     background-color: rgba(125, 125, 125, 0.12);
     color: inherit;
@@ -474,6 +474,14 @@
     background-color: rgba(0, 75, 141, 0.10);
     border-color: transparent;
     color: var(--edpreset-accent);
+    cursor: default;
+}
+
+.edpreset-chooser .edpreset-template-recommended {
+    flex-shrink: 0;
+    background-color: rgba(11, 122, 91, 0.12);  /* soft green tint */
+    border-color: transparent;
+    color: #0b7a5b;                              /* green text/foreground */
     cursor: default;
 }
 
