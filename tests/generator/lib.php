@@ -152,10 +152,12 @@ class mod_edpreset_generator extends testing_module_generator {
     /**
      * Create a course laid out like a template course, and point the plugin at it.
      *
-     * @param array $spec Section number => array of activity specs. Each spec takes 'modname',
-     *                    an optional 'name', and an optional 'meta': an array of metadata field
-     *                    overrides, or false for an activity with no preset details at all.
-     *                    Section 0 is reserved for curator instructions and is never scanned.
+     * @param array $spec Section number => either a list of activity specs, or an array with
+     *                    'activities' plus an optional 'name' and 'summary' for the section itself.
+     *                    Each activity spec takes 'modname', an optional 'name', and an optional
+     *                    'meta': metadata field overrides, or false for an activity with no preset
+     *                    details at all. Section 0 is reserved for curator instructions and is
+     *                    never scanned.
      * @return stdClass The course.
      */
     public function create_template_course(array $spec = []): stdClass {
@@ -164,7 +166,19 @@ class mod_edpreset_generator extends testing_module_generator {
         $numsections = $spec ? max(array_keys($spec)) : 1;
         $course = $generator->create_course(['numsections' => $numsections, 'format' => 'topics']);
 
-        foreach ($spec as $sectionnum => $activities) {
+        foreach ($spec as $sectionnum => $section) {
+            // A section is either a plain list of activities, or that list plus its own name and
+            // summary - which is what a section template needs.
+            $activities = $section['activities'] ?? $section;
+            if (isset($section['name']) || isset($section['summary'])) {
+                $this->set_section(
+                    $course,
+                    (int)$sectionnum,
+                    (string)($section['name'] ?? ''),
+                    (string)($section['summary'] ?? '')
+                );
+            }
+
             foreach ($activities as $activity) {
                 $name = $activity['name'] ?? ucfirst($activity['modname']);
                 $module = $generator->create_module($activity['modname'], [
@@ -185,5 +199,101 @@ class mod_edpreset_generator extends testing_module_generator {
         set_config('enabled', 1, 'mod_edpreset');
 
         return $course;
+    }
+
+    /**
+     * Name a section and give it a summary.
+     *
+     * A section name ending in the template marker is what makes a section a section template, and
+     * its summary becomes that template's description.
+     *
+     * @param stdClass $course The course.
+     * @param int $sectionnum The section number.
+     * @param string $name The section name, or '' to leave it unnamed.
+     * @param string $summary The section summary, or '' for none.
+     */
+    public function set_section(stdClass $course, int $sectionnum, string $name, string $summary = ''): void {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $sectioninfo = get_fast_modinfo($course)->get_section_info($sectionnum, MUST_EXIST);
+
+        \core_courseformat\formatactions::section($course)->update($sectioninfo, [
+            'name' => $name !== '' ? $name : null,
+            'summary' => $summary,
+            'summaryformat' => FORMAT_HTML,
+        ]);
+    }
+
+    /**
+     * Point the plugin at a course and switch it on.
+     *
+     * Behat entity: the following "mod_edpreset > template courses" exist, with a course column.
+     * It exists because the config value is a course id, which a feature file cannot know.
+     *
+     * @param array $data Must contain courseid.
+     */
+    public function create_behat_template_course(array $data): void {
+        set_config('templatecourseid', (int)$data['courseid'], 'mod_edpreset');
+        set_config('enabled', 1, 'mod_edpreset');
+    }
+
+    /**
+     * Name a section and give it a summary.
+     *
+     * Behat entity: the following "mod_edpreset > sections" exist, with course, section, name and
+     * summary columns. Moodle 4.5 has no core generator for sections at all.
+     *
+     * @param array $data Must contain courseid and section; name and summary are optional.
+     */
+    public function create_behat_section(array $data): void {
+        $course = get_course((int)$data['courseid']);
+
+        $this->set_section(
+            $course,
+            (int)$data['section'],
+            (string)($data['name'] ?? ''),
+            (string)($data['summary'] ?? '')
+        );
+    }
+
+    /**
+     * Record preset details against an activity.
+     *
+     * Behat entity: the following "mod_edpreset > preset details" exist, with an activity column
+     * holding the activity's idnumber.
+     *
+     * @param array $data Must contain cmid and presetname.
+     */
+    public function create_behat_preset_details(array $data): void {
+        $cmid = (int)$data['cmid'];
+        unset($data['cmid']);
+
+        $this->create_metadata($cmid, array_filter(
+            $data,
+            fn($key) => in_array($key, ['presetname', 'description', 'teacherguidance', 'tags', 'defaultname'], true),
+            ARRAY_FILTER_USE_KEY
+        ));
+    }
+
+    /**
+     * Run the whole bake pipeline to completion, as cron would.
+     *
+     * Behat and any test that copies a preset need archives that genuinely restore, which the fake
+     * ones attach_backup() writes are not. This rescans the template course and then drains the
+     * adhoc tasks the rescan queued, so that presets come out the far end live.
+     */
+    public function run_pipeline(): void {
+        \mod_edpreset\local\baker::rebuild();
+
+        // Both task types re-queue work for the other, so this drains until nothing is left rather
+        // than making one pass: a bake queues its own validation.
+        while ($task = \core\task\manager::get_next_adhoc_task(time())) {
+            if (str_starts_with(get_class($task), 'mod_edpreset\\task\\')) {
+                $task->execute();
+            }
+            \core\task\manager::adhoc_task_complete($task);
+        }
     }
 }

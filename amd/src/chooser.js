@@ -33,6 +33,8 @@ import Pending from 'core/pending';
 
 const SELECTORS = {
     ROOT: '[data-region="edpreset-chooser"]',
+    ADDFORM: '[data-region="addform"]',
+    ADDTEMPLATE: '[data-action="addtemplate"]',
     CARD: '[data-region="card"]',
     GROUP: '[data-region="group"]',
     GROUPS: '[data-region="groups"]',
@@ -73,6 +75,35 @@ let searchTerm = '';
  * @returns {boolean}
  */
 const isFiltering = () => searchTerm !== '' || activeTags.size > 0;
+
+/**
+ * How many activities the target section already holds, teacher notes excluded.
+ *
+ * Sent with the page rather than fetched, so that adding a template to an empty section - the common
+ * case, and the one where no dialogue is wanted - costs no round trip at all.
+ *
+ * @returns {Number}
+ */
+const sectionActivityCount = () =>
+    parseInt(root.querySelector(SELECTORS.ADDFORM)?.dataset.sectionactivitycount ?? '0', 10);
+
+/**
+ * Ask the teacher where a section template's activities should go.
+ *
+ * Loaded on demand: the dialogue pulls in the modal and drag-and-drop machinery, and most visits to
+ * this page never open one.
+ *
+ * @param {Number} templatesection The template's section number in the template course.
+ * @param {String} templatetitle The template's name.
+ */
+const openReorder = (templatesection, templatetitle) => {
+    const pending = new Pending('mod_edpreset/chooser:reorder');
+
+    import('mod_edpreset/reorder')
+        .then((reorder) => reorder.open(root, templatesection, templatetitle))
+        .then(pending.resolve)
+        .catch(Notification.exception);
+};
 
 /**
  * Whether one card survives the current filters.
@@ -313,6 +344,20 @@ export const init = () => {
             }
             refreshTagButtons();
             applyFilters();
+            return;
+        }
+
+        const addtemplate = event.target.closest(SELECTORS.ADDTEMPLATE);
+        if (addtemplate) {
+            // An empty section, or one holding a single activity, has no ordering worth asking
+            // about - so the link is left to do its own work and no dialogue appears at all.
+            if (sectionActivityCount() <= 1) {
+                return;
+            }
+
+            event.preventDefault();
+            const card = addtemplate.closest(SELECTORS.CARD);
+            openReorder(parseInt(card.dataset.templatesection, 10), card.dataset.title);
             return;
         }
 

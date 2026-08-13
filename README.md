@@ -62,6 +62,8 @@ The plugin does nothing until it is enabled and pointed at a template course.
    | `maxpresets` | 100 | Cap on how many presets are offered at once. |
    | `maxbackupsize` | 104857600 (100 MB) | Exemplars with a larger backup are not offered. `0` disables the limit. |
    | `datefields` | *(empty)* | Extra date fields for activity types the built-in scrub map does not cover, one `modname: field, field` pair per line. |
+   | `preventmixing` | on | Lock a course to the first section template it uses. See [One template per course](#one-template-per-course). |
+   | `ignoreinvalidtemplate` | on | Release a course whose recorded template has since been renamed or deleted. |
    | `sandboxshortname` | `edpreset_restore_test` | Short name of the hidden course used for test restores. |
    | `sandboxcategoryid` | site default | Category the test-restore course is created in. |
 
@@ -95,6 +97,85 @@ names in the template course become the preset categories.
 Either route ends at the same handler, and the teacher is returned to the section they started from.
 A preset arrives already configured, so — unlike every other chooser item — the flow deliberately
 does **not** end on the new activity's settings form.
+
+### Curating a section template
+
+A **section template** is a whole set of activities offered as one card — an induction sequence, a
+weekly teaching cycle, an assessment bundle. To publish one, name a section of the template course
+so it ends in `[Template]`:
+
+```
+Weekly teaching cycle [Template]
+```
+
+Everything else follows the ordinary rules. Each activity in that section still needs its own
+**Preset details** — that is what gets it a backup — and the section's own **summary** becomes the
+template's description. The card shows the section name without the marker, the distinct activity
+types it contains, and the combined tags of its members. Its icon is the icon of the **first**
+activity in the section, so putting the activity a teacher would recognise the set by at the top of
+the section is worth doing.
+
+The activities in a `[Template]` section are offered **only** as part of the template. They do not
+appear individually, in the standard activity chooser or on the preset activities page.
+
+> Use text for a template's section summary. An image uploaded into it is served through the template
+> course's own file area, so it will not load for teachers who cannot access that course.
+
+### Adding a section template to a course
+
+Templates appear under **Section templates** on the preset activities page. Choosing **Add to
+course**:
+
+* **into an empty section, or one holding a single activity** — adds every activity in template
+  order, with no further questions;
+* **into a section that already has content** — opens a dialogue with the template's activities on
+  the left and the section's existing activities on the right. Drag activities from the right into
+  the left-hand list to interleave them. Anything left on the right is added below the template, so
+  the dialogue can be confirmed without dragging anything.
+
+Only the course's own activities can be dragged. The template's activities keep the order its curator
+arranged them in and act as the positions to drop between — a teacher can decide where their own
+content sits relative to the template, but not rearrange the template itself.
+
+Teacher notes never appear in the dialogue: each note stays pinned immediately above the activity it
+describes, wherever that activity ends up.
+
+After a template is added, the course's **Default section template** custom field records its name.
+
+### One template per course
+
+A course settles on the first template it uses. From then on the others still appear in the chooser,
+but greyed out with their **Add to course** button disabled and a note underneath:
+
+> You cannot select this template because a different template has already been used in the course.
+> Contact Stream support if you need to resolve this.
+
+A section built from two different templates is neither, which is what the restriction is for.
+Clearing the course's **Default section template** custom field releases it — that is why the message
+points at an administrator rather than offering the teacher a way out.
+
+Two site settings govern this, both on by default:
+
+| Setting | Effect |
+| --- | --- |
+| **Prevent mixing of templates** | Off turns the whole restriction off: every template stays choosable however many a course has used. |
+| **Ignore previously selected templates that are now invalid** | On releases a course whose recorded template has since been renamed or deleted, rather than locking it out of every template with nothing on screen to explain why. Only meaningful while the setting above is on, so the admin page hides it otherwise. |
+
+"No longer available" means the curator has deleted or renamed the section — deliberately *not*
+"has no live members right now". A template mid-rebake momentarily has none, and treating that as
+gone would let a course slip its lock for good over a few minutes of cron.
+
+### Linking straight to the section templates
+
+Anything that can render a link may send a teacher directly to the templates for one section:
+
+```
+/mod/edpreset/chooser.php?sectionid=<course_sections.id>&sesskey=<sesskey>
+```
+
+The section id supplies both the course and the section number. That form shows **only** the section
+templates group. Both forms of the page require a sesskey, so the link has to be minted server-side
+for the user following it.
 
 ## Technical details
 
@@ -136,6 +217,39 @@ re-point everyone's stars.
 `edpreset_item.title` is copied from `edpreset_meta.presetname`, not from the exemplar's activity
 name: an inline rename on the course page fires `course_module_updated` without running the settings
 form's post actions, so the two must stay independent.
+
+### Section templates
+
+There is **no table for section templates**. A template is a view over the preset rows sharing a
+`sectionnum`, and `edpreset_item.sortorder` is already `sectionnum * 1000 + position`, so the set's
+intended order is stored simply by existing. `\mod_edpreset\local\section_template` does the
+grouping.
+
+The only two facts a template card needs that a preset row did not already carry are denormalised
+onto every member row by the baker — which is exactly what `category` already did with the section
+name:
+
+| Column | Meaning |
+| --- | --- |
+| `templatename` | Section name with the marker stripped. **Non-empty is the flag** that a preset is a template member. |
+| `templatesummary` | Cleaned HTML of the section summary, rendered once at bake time. |
+
+A template's identity in URLs and grouping is its `sectionnum`, not its name — two sections could
+strip to the same name.
+
+Marker detection runs against the **raw** `course_sections.name`. `get_section_name()` puts the name
+through `format_string()`, which a filter may rewrite, and falls back to "Topic 3" for an unnamed
+section; neither should decide whether a section is a template. The display title is
+`format_string()` of the *stripped* raw name, so the marker cannot survive inside filtered output.
+
+The section summary is cleaned with `noclean => false`, where core renders section summaries with
+`noclean => true` (`core_courseformat\output\local\content\section\summary::format_summary_text`).
+Core's summaries are seen only by people already in that course; this one is read by every teacher on
+the site who opens the chooser, so it crosses the same trust boundary as a preset description and
+gets the same treatment.
+
+`maxpresets` counts **cards**, so a template counts once however many activities it holds. Counting
+members would let the cap truncate a template mid-way and ship a set that silently drops activities.
 
 ### Chooser integration
 
@@ -274,6 +388,33 @@ them behind for the next restore in the same request to adopt, and `destroy()` i
 plan and logger (its own docblock warns that a script performing several operations without it runs
 out of memory — exactly this case).
 
+### Reordering a section
+
+`copy.php` takes a preset list **or** a `template` (a template course section number), never both,
+plus an optional `order` of `p<presetid>` / `c<cmid>` tokens. `activity_copier::copy_template()`
+snapshots the section, copies the members through the ordinary `copy_many()`, then rewrites the
+order.
+
+There is **no supported API that writes a section's `sequence` in one go** — both
+`course_update_section()` and `\core_courseformat\local\sectionactions::update()` strip the field out,
+and `formatactions::cm()` has only `rename()` and `set_visibility()`. So `reorder_section()` replays
+core's own idiom from `\core_courseformat\stateactions::cm_move()`: walk the wanted order backwards,
+re-reading `get_fast_modinfo()` each iteration, moving each module in front of the one placed just
+after it. Each `moveto_module()` rebuilds the course cache twice, which is why `access::MAX_ORDER_TOKENS`
+exists.
+
+Teacher notes are never offered to the teacher to arrange — a note belongs to exactly one activity,
+and letting it be dragged away would only produce orphans. `note_pairs()` reconstructs the pairings
+from two sources: notes this copy made are reported directly by `copy_with_note()`, while notes
+already in the section are inferred from the snapshot taken **before** the copy, since the copy itself
+can splice new modules between a note and its activity.
+
+Anything the order does not mention is appended, keeping its relative order. That is both how
+untouched activities end up below the template and the safety net that stops a stale or hand-edited
+order from losing an activity: a token can go stale between the dialogue opening and the form
+arriving, and neither a preset that failed to restore nor an activity someone else deleted is worth
+failing the whole add for.
+
 ### Tasks and events
 
 | Task | Type | Schedule |
@@ -345,9 +486,23 @@ redirect plus a continue button.
 
 ### Web services and user preferences
 
-`mod_edpreset_set_favourite` is AJAX-only and not part of any service — it exists for the preset
-chooser page's JavaScript, not as a public API. Copying is deliberately a form post rather than a web
-service, so that one restore or ten happen in a single request.
+`mod_edpreset_set_favourite` and `mod_edpreset_get_template_items` are AJAX-only and not part of any
+service — they exist for the preset chooser page's JavaScript, not as a public API. Copying is
+deliberately a form post rather than a web service, so that one restore or ten happen in a single
+request; the reorder dialogue only computes an order, writes it into that same form and submits it,
+so a template added through the dialogue and one added by following its card's link reach `copy.php`
+by exactly the same route.
+
+`get_template_items` re-reads the target section rather than relying on what the page shipped: the
+page may have been open a while, and what the teacher has to arrange is the section as it is now. The
+page does carry a `sectionactivitycount`, but only so that adding to an empty section — the common
+case, and the one where no dialogue is wanted — costs no round trip at all.
+
+The dialogue is built with `core/modal_save_cancel` (`core/modal_factory` has been deprecated since
+4.3) and `core/sortable_list`. The sortable list is constructed from a **selector string**, not from
+the list elements: given a string it delegates its mousedown listener from `body`, so it survives the
+modal's markup not existing yet and `core/modal` re-attaching its root to the document. That is also
+why it is registered exactly once — registering twice would give every drag two handlers.
 
 Stars are recorded against this plugin's own `core_favourites` component/item type
 (`mod_edpreset` / `preset`) in the user's context, rather than `core_course`'s, because they must
@@ -359,6 +514,27 @@ The collapsed-group state is a user preference, `mod_edpreset_collapsed`, declar
 `mod_edpreset_user_preferences()` — without which `core_user::get_preference_definition()` throws and
 the AJAX write is rejected. Groups are keyed by an 8-character hash of the section name because the
 whole set has to fit in `user_preferences.value` (`char(1333)`).
+
+### The "Default section template" course custom field
+
+Created by `db/install.php` (`xmldb_edpreset_install()` → `\mod_edpreset\local\coursedefault`) as a
+`text` field with shortname `defaultsectiontemplate`, in a dedicated "Activity preset provider"
+category, with `visibility => course_handler::NOTVISIBLE` — nobody sees it on a course listing or a
+course page. It is not locked: locking would make `instance_form_save()` silently no-op for anyone
+without `moodle/course:changelockedcustomfields`, which is most teachers.
+
+There is **deliberately no matching upgrade step**, so sites that installed the plugin earlier will
+not have the field. Every read and write therefore looks it up by shortname first and does nothing
+when it is absent, and the write swallows its own errors — by the time it runs the activities are
+already in the section, so throwing would report a failure that did not happen.
+
+Reading it needs `get_instance_data($courseid, true)`. Without the `$returnall` flag,
+`get_visible_fields()` filters an invisible field straight back out.
+
+`coursedefault::allows()` holds the one-template-per-course rule, so the policy sits with the field
+rather than being restated at each call site. The chooser uses it to grey a card out; `copy.php`
+enforces it. Both, deliberately: a disabled button is a courtesy, and a hand-typed URL would sail
+straight past it.
 
 ### Plugin backup and restore
 
@@ -388,6 +564,28 @@ test data generator.
 ```
 vendor/bin/phpunit --testsuite mod_edpreset_testsuite
 ```
+
+Behat covers section templates in `tests/behat/section_templates.feature`. Two things about it are
+worth knowing before adding to it:
+
+* The background runs the **real** bake pipeline — a genuine backup of each exemplar and a test
+  restore into the sandbox — through the `the mod_edpreset presets have been baked` step. Anything
+  that actually adds a preset needs an archive that restores, and only the real thing is one. It is
+  slow for the same reason.
+* The **drag gesture itself is not tested**. Core does not test activity reordering that way either:
+  its one drag step, `behat_general::i_drag_and_i_drop_it_in()`, is documented as experimental, and
+  core exercises reordering through keyboard steps on the move modal instead. The scenarios cover the
+  card, the exclusion of members, both add paths, the dialogue's contents and the confirm-without-
+  dragging order; dragging stays a manual check.
+
+Fixtures come from `tests/generator/behat_mod_edpreset_generator.php`, which exposes three entities
+core cannot supply: `mod_edpreset > sections` (Moodle 4.5 has no section generator at all),
+`mod_edpreset > preset details`, and `mod_edpreset > template courses` (the config value is a course
+id, which a feature file cannot know).
+
+The navigation steps load an ordinary page first and scrape the sesskey out of it, because both entry
+points require one and a step definition cannot mint it — steps run in the test runner's process,
+which has no share of the browser's session.
 
 CI (`.github/workflows/moodle-ci.yml`) runs the full `moodle-plugin-ci` set against Moodle 4.5 on PHP
 8.1 and PostgreSQL 16: phplint, phpmd, phpcs, phpdoc, validate, savepoints, mustache lint, grunt,

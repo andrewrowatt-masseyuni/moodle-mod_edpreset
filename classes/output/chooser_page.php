@@ -18,7 +18,10 @@ namespace mod_edpreset\output;
 
 use core\output\renderer_base;
 use core\output\templatable;
+use mod_edpreset\local\activity_copier;
 use mod_edpreset\local\chooser;
+use mod_edpreset\local\coursedefault;
+use mod_edpreset\local\section_template;
 use mod_edpreset\meta;
 use mod_edpreset\preset;
 use moodle_url;
@@ -39,6 +42,9 @@ class chooser_page implements renderable, templatable {
     /** @var int Section groups are keyed by a short hash of their name; see section_key(). */
     protected const SECTION_KEY_LENGTH = 8;
 
+    /** @var int How many distinct activity types a section template's card names. */
+    protected const MAX_MODULE_NAMES = 3;
+
     /** @var stdClass The target course. */
     protected stdClass $course;
 
@@ -48,17 +54,27 @@ class chooser_page implements renderable, templatable {
     /** @var int Course module id to insert before, or 0 to append. */
     protected int $beforemod;
 
+    /** @var bool Whether to show only the section templates. */
+    protected bool $templatesonly;
+
     /**
      * Constructor.
      *
      * @param stdClass $course The target course.
      * @param int $sectionnum The section the activity chooser was opened from.
      * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param bool $templatesonly Show only the section templates, for the sectionid entry point.
      */
-    public function __construct(stdClass $course, int $sectionnum, int $beforemod = 0) {
+    public function __construct(
+        stdClass $course,
+        int $sectionnum,
+        int $beforemod = 0,
+        bool $templatesonly = false
+    ) {
         $this->course = $course;
         $this->sectionnum = $sectionnum;
         $this->beforemod = $beforemod;
+        $this->templatesonly = $templatesonly;
     }
 
     /**
@@ -83,8 +99,78 @@ class chooser_page implements renderable, templatable {
      */
     public function export_for_template(renderer_base $output): stdClass {
         $presets = chooser::get_page_presets();
-        $favourites = self::get_favourited_ids();
         $collapsed = self::get_collapsed_keys();
+
+        // A section template is offered as a set, so its members never become cards of their own.
+        $templates = section_template::from_presets($presets);
+        $individuals = array_values(array_filter($presets, fn(preset $preset) => !$preset->is_template_member()));
+
+        // Once a course has used one template it keeps to it, so every other template is shown but
+        // cannot be chosen. Read once here rather than per card.
+        $usedtemplate = coursedefault::get((int)$this->course->id);
+
+        $templatecards = [];
+        foreach ($templates as $template) {
+            $templatecards[] = $this->export_template_card($template, $usedtemplate);
+        }
+
+        // Starred first, then the individual categories, then the sets last.
+        ['starred' => $starred, 'categories' => $categories] = $this->templatesonly
+            ? ['starred' => null, 'categories' => []]
+            : $this->export_preset_groups($individuals, $collapsed);
+
+        $groups = [];
+        if ($starred) {
+            $groups[] = $starred;
+        }
+
+        $groups = array_merge($groups, $categories);
+
+        if ($templatecards) {
+            $groups[] = $this->export_group(
+                get_string('chooser:sectiontemplates', 'mod_edpreset'),
+                $templatecards,
+                $collapsed,
+                false,
+                true
+            );
+        }
+
+        // In templates-only mode the tag bar offers only the tags some template actually carries:
+        // anything else would filter the page to nothing, which is worse than not offering the tag.
+        $tagsource = $this->templatesonly ? $this->template_members($templates) : $presets;
+
+        $data = new stdClass();
+        $data->groups = $groups;
+        $data->hasgroups = !empty($groups);
+        $data->templatesonly = $this->templatesonly;
+        $data->courseid = (int)$this->course->id;
+        $data->sectionnum = $this->sectionnum;
+        $data->beforemod = $this->beforemod;
+        // What decides whether adding a template needs the reorder dialogue. Sent with the page so
+        // the common case costs no round trip; the dialogue re-reads the section when it opens.
+        $data->sectionactivitycount = $this->count_section_activities();
+        $data->sesskey = sesskey();
+        $data->alltags = $this->export_tags($tagsource);
+        $data->hastags = !empty($data->alltags);
+        // Where the page's form posts the selection. The ids themselves are filled in client-side.
+        $data->copyurl = (new moodle_url('/mod/edpreset/copy.php'))->out(false);
+
+        return $data;
+    }
+
+    /**
+     * The "Starred" and per-category groups.
+     *
+     * Handed back separately rather than as one list because the section templates group belongs
+     * between them.
+     *
+     * @param preset[] $presets The presets that are not section template members.
+     * @param string[] $collapsed The section keys this user has collapsed.
+     * @return array{starred: ?stdClass, categories: stdClass[]}
+     */
+    protected function export_preset_groups(array $presets, array $collapsed): array {
+        $favourites = self::get_favourited_ids();
 
         $starred = [];
         $bycategory = [];
@@ -101,27 +187,57 @@ class chooser_page implements renderable, templatable {
             $bycategory[$category][] = $card;
         }
 
-        $groups = [];
-        if ($starred) {
-            $groups[] = $this->export_group(get_string('chooser:starred', 'mod_edpreset'), $starred, $collapsed, true);
-        }
+        $categories = [];
         foreach ($bycategory as $category => $cards) {
-            $groups[] = $this->export_group($category, $cards, $collapsed, false);
+            $categories[] = $this->export_group($category, $cards, $collapsed, false);
         }
 
-        $data = new stdClass();
-        $data->groups = $groups;
-        $data->hasgroups = !empty($groups);
-        $data->courseid = (int)$this->course->id;
-        $data->sectionnum = $this->sectionnum;
-        $data->beforemod = $this->beforemod;
-        $data->sesskey = sesskey();
-        $data->alltags = $this->export_tags($presets);
-        $data->hastags = !empty($data->alltags);
-        // Where the page's form posts the selection. The ids themselves are filled in client-side.
-        $data->copyurl = (new moodle_url('/mod/edpreset/copy.php'))->out(false);
+        return [
+            'starred' => $starred
+                ? $this->export_group(get_string('chooser:starred', 'mod_edpreset'), $starred, $collapsed, true)
+                : null,
+            'categories' => $categories,
+        ];
+    }
 
-        return $data;
+    /**
+     * Every member preset of every template, flattened.
+     *
+     * @param section_template[] $templates The templates.
+     * @return preset[]
+     */
+    protected function template_members(array $templates): array {
+        $members = [];
+        foreach ($templates as $template) {
+            foreach ($template->get_members() as $member) {
+                $members[] = $member;
+            }
+        }
+        return $members;
+    }
+
+    /**
+     * How many activities the target section already holds.
+     *
+     * Teacher notes do not count. They are chrome that travels with the activity they describe, so a
+     * section holding one activity and its note is still a section holding one activity - and asking
+     * the teacher to reorder that would be noise.
+     *
+     * @return int
+     */
+    protected function count_section_activities(): int {
+        $modinfo = get_fast_modinfo($this->course);
+
+        $count = 0;
+        foreach ($modinfo->sections[$this->sectionnum] ?? [] as $cmid) {
+            $cm = $modinfo->get_cm($cmid);
+            if ($cm->deletioninprogress || $cm->modname === activity_copier::NOTE_MODNAME) {
+                continue;
+            }
+            $count++;
+        }
+
+        return $count;
     }
 
     /**
@@ -131,20 +247,123 @@ class chooser_page implements renderable, templatable {
      * @param stdClass[] $cards The cards in the group.
      * @param string[] $collapsed The section keys this user has collapsed.
      * @param bool $isstarred Whether this is the Starred pseudo-group.
+     * @param bool $istemplategroup Whether these are section template cards rather than preset cards.
      * @return stdClass
      */
-    protected function export_group(string $name, array $cards, array $collapsed, bool $isstarred): stdClass {
+    protected function export_group(
+        string $name,
+        array $cards,
+        array $collapsed,
+        bool $isstarred,
+        bool $istemplategroup = false
+    ): stdClass {
         $key = self::section_key($name);
 
         $group = new stdClass();
         $group->name = $name;
         $group->key = $key;
         $group->starred = $isstarred;
+        // Mustache cannot choose a partial dynamically, so the template branches on this.
+        $group->istemplategroup = $istemplategroup;
         $group->cards = $cards;
         $group->count = count($cards);
         $group->expanded = !in_array($key, $collapsed, true);
 
         return $group;
+    }
+
+    /**
+     * One section template card.
+     *
+     * Deliberately does NOT carry data-presetid. chooser.js parses that attribute and then
+     * dereferences the card's select button unguarded, so a card with a preset id but no select
+     * button would throw the moment anything tried to select it.
+     *
+     * @param section_template $template The template.
+     * @param string $usedtemplate The template this course has already used, or '' if none.
+     * @return stdClass
+     */
+    protected function export_template_card(section_template $template, string $usedtemplate = ''): stdClass {
+        $tags = $template->get_tags();
+        $summary = $template->get_summary();
+        $modulenames = $template->get_module_names();
+
+        $card = new stdClass();
+        $card->templatesection = $template->get_sectionnum();
+        $card->title = $template->get_name();
+        // Already cleaned at bake time, so the template renders it unescaped - same contract as a
+        // preset description.
+        $card->description = $summary;
+        // The first member's icon, with the classes that colour it: the icon container needs the
+        // module, purpose and branded flag or the icon comes out grey.
+        $card->icon = $template->get_icon_html();
+        $card->modname = $template->get_modname();
+        $card->purpose = $template->get_purpose();
+        $card->branded = $template->is_branded();
+        $card->modfullname = $this->summarise_module_names($modulenames);
+        // Drives the stacked-tile treatment behind the icon. Keyed on distinct activity types
+        // rather than on activity count, because the icon stands for a type: the stack is there to
+        // say the set holds kinds the icon is not showing.
+        $card->hasmultipletypes = count($modulenames) > 1;
+        // Shown, but not choosable: the course has already been built from a different template.
+        // Asked of coursedefault rather than worked out here, so that the card and the check
+        // copy.php makes cannot drift apart - and so the site settings that qualify the rule reach
+        // both. The record is passed in because the page weighs several templates against the same
+        // one.
+        $card->locked = !coursedefault::allows_for_record($usedtemplate, $template->get_name());
+        $card->count = $template->count_members();
+        $card->addurl = $this->template_add_url($template->get_sectionnum())->out(false);
+        $card->tags = array_map(fn($tag) => (object)['name' => $tag], $tags);
+        $card->hastags = !empty($tags);
+
+        // The same flattening the preset cards get, so one filter pass covers both kinds of card.
+        // Module names are included so that searching for "Quiz" finds the sets containing one.
+        $card->searchtext = \core_text::strtolower(
+            trim(
+                $card->title
+                . ' ' . html_to_text($summary, 0, false)
+                . ' ' . implode(' ', $modulenames)
+                . ' ' . implode(' ', $tags)
+            )
+        );
+        $card->tagkeys = \core_text::strtolower(implode('|', $tags));
+
+        return $card;
+    }
+
+    /**
+     * Name the distinct activity types a template holds, without letting a long set take over the card.
+     *
+     * @param string[] $modulenames The distinct activity type names, in template order.
+     * @return string
+     */
+    protected function summarise_module_names(array $modulenames): string {
+        $shown = array_slice($modulenames, 0, self::MAX_MODULE_NAMES);
+        $list = implode(', ', $shown);
+
+        return count($modulenames) > count($shown)
+            ? get_string('chooser:templatetypesmore', 'mod_edpreset', $list)
+            : $list;
+    }
+
+    /**
+     * The link on a template card that adds that whole set.
+     *
+     * An ordinary link to the same script the single-preset cards use, so adding a template still
+     * works with JavaScript turned off - it just adds the set in template order, without offering
+     * the chance to interleave it with what is already in the section.
+     *
+     * @param int $templatesection The template's section number in the template course.
+     * @return moodle_url
+     */
+    protected function template_add_url(int $templatesection): moodle_url {
+        return new moodle_url('/mod/edpreset/copy.php', [
+            'template' => $templatesection,
+            'course' => $this->course->id,
+            'section' => $this->sectionnum,
+            'beforemod' => $this->beforemod,
+            'sesskey' => sesskey(),
+        ]);
     }
 
     /**

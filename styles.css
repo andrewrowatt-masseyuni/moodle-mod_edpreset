@@ -93,7 +93,7 @@
  * A single neutral pill, deliberately not one of Bootstrap's badge-* colours: the tags are a
  * flat vocabulary with no ranking between them, so colouring them would imply one.
  */
-.edpreset-chooser .edpreset-tag {
+:is(.edpreset-chooser, .edpreset-reorder) .edpreset-tag {
     display: inline-block;
     padding: 0.2em 0.6em;
     font-size: 0.75rem;
@@ -109,12 +109,12 @@
     cursor: pointer;
 }
 
-.edpreset-chooser button.edpreset-tag:hover,
-.edpreset-chooser button.edpreset-tag:focus {
+:is(.edpreset-chooser, .edpreset-reorder) button.edpreset-tag:hover,
+:is(.edpreset-chooser, .edpreset-reorder) button.edpreset-tag:focus {
     background-color: rgba(125, 125, 125, 0.25);
 }
 
-.edpreset-chooser .edpreset-tag-active {
+:is(.edpreset-chooser, .edpreset-reorder)  .edpreset-tag-active {
     background-color: rgba(125, 125, 125, 0.55);
     border-color: rgba(125, 125, 125, 0.75);
 }
@@ -370,4 +370,222 @@
     footer {
         display: none;
     }
+}
+
+/* Section templates. */
+
+/*
+ * A blank tile peeking out behind the icon, so a set spanning more than one kind of activity reads
+ * as a stack at a glance - the icon itself is only the first activity's, and says nothing about the
+ * rest.
+ *
+ * An offset box-shadow rather than a pseudo-element. An outset shadow is painted beneath the
+ * element's own background, which is exactly the layering wanted; a pseudo-element would paint over
+ * the tile's background instead, and pushing it under would need a negative z-index that the card
+ * body's own background would then hide.
+ */
+.edpreset-chooser .edpreset-card-icon-stacked {
+    outline: 1px solid white;
+    box-shadow: 4px 0 0 0 #f1f3f7;
+    /* stylelint-disable-next-line declaration-no-important */
+    margin-right: calc(0.25rem + 4px) !important;
+}
+
+/*
+ * A section template card and the note explaining why it cannot be chosen are wrapped together so
+ * they occupy a single cell of the card grid: the wrapper behaves as one card, the card fills the
+ * row height and its note sits directly underneath.
+ */
+.edpreset-chooser .edpreset-cardwrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.edpreset-chooser .edpreset-cardwrap .edpreset-card {
+    flex: 1 1 auto;
+}
+
+/*
+ * A template the course cannot use: greyed and hatched so it reads as unavailable rather than
+ * merely unselected, with pointer events off so nothing inside it invites a click. The hatch is
+ * what distinguishes "you may not" from "this is loading" or "this is unstyled".
+ */
+.edpreset-chooser .edpreset-card-locked {
+    opacity: 0.55;
+    pointer-events: none;
+    cursor: not-allowed;
+    background-color: rgba(0, 0, 0, 0.03);
+    background-image:
+        repeating-linear-gradient(
+            135deg,
+            rgba(0, 0, 0, 0.1),
+            rgba(0, 0, 0, 0.1) 1px,
+            transparent 1px,
+            transparent 12px
+        );
+}
+
+/* The card's own hover lift would contradict the fact that it cannot be used. */
+.edpreset-chooser .edpreset-card-locked.card:hover {
+    border-color: #e4e8ee;
+    box-shadow: 0 1px 2px rgba(16, 40, 70, 0.04);
+    transform: none;
+}
+
+/* The muted note under an unavailable card. */
+.edpreset-chooser .edpreset-card-note {
+    font-size: 0.8rem;
+    color: rgba(0, 0, 0, 0.6);
+    line-height: 1.3;
+}
+
+.edpreset-chooser .edpreset-template-count {
+    flex-shrink: 0;
+    background-color: rgba(0, 75, 141, 0.10);
+    border-color: transparent;
+    color: var(--edpreset-accent);
+    cursor: default;
+}
+
+.edpreset-chooser .edpreset-template-card .edpreset-card-description {
+    max-height: unset;
+}
+
+/* Reorder dialogue. */
+
+.edpreset-reorder-intro {
+    font-size: 0.9375rem;
+}
+
+.edpreset-reorder-heading {
+    font-weight: 500;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6a737b;
+}
+
+.edpreset-reorder-list {
+    padding: 0.25rem;
+    min-height: 4rem;
+    border: 1px dashed #d3dae3;
+    border-radius: 0.5rem;
+}
+
+.edpreset-reorder-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.5rem;
+    margin-bottom: 0.25rem;
+    border: 1px solid #e4e8ee;
+    border-radius: 0.5rem;
+    background: #fff;
+}
+
+.edpreset-reorder-item:last-child {
+    margin-bottom: 0;
+}
+
+/*
+ * The only difference between the two kinds of item is a wash of background, which is enough to read
+ * the two sets apart once they are interleaved without competing with the pills.
+ */
+.edpreset-reorder-item-template {
+    background: rgba(0, 75, 141, 0.05);
+}
+
+.edpreset-reorder-item-course {
+    background: #fff;
+}
+
+/* A template's activities are fixed in the curator's order, so nothing here should offer to move. */
+.edpreset-reorder-item-template {
+    cursor: default;
+}
+
+.edpreset-reorder-handle {
+    color: #8a94a3;
+}
+
+/*
+ * Stands in for the drag handle a template activity does not have, so that the name, icon and pill
+ * of a fixed row line up with those of a draggable one either side of it. Sized from the handle's
+ * own icon rather than guessed at.
+ */
+.edpreset-reorder-handle-fixed {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    --icon-stack-offset: 2px;
+}
+
+.edpreset-reorder-handle-fixed > span > i {
+    top: calc(0px - var(--icon-stack-offset));
+    left: calc(0px - var(--icon-stack-offset));
+    color: #ccc;
+}
+
+.edpreset-reorder-handle-fixed > span > i + i {
+    top: calc(0px + var(--icon-stack-offset));
+    left: calc(0px + var(--icon-stack-offset));
+    color: tomato;
+}
+
+.edpreset-reorder-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.edpreset-reorder-name {
+    flex-grow: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.edpreset-reorder-type {
+    font-size: 0.8125rem;
+    white-space: nowrap;
+}
+
+/*
+ * Both pills reuse the tag pill's shape - same padding, radius and weight - so they read as the same
+ * family. Only the tint differs, and it matches the item wash behind it.
+ */
+.edpreset-pill {
+    flex-shrink: 0;
+    cursor: help;
+}
+
+.edpreset-pill-template {
+    border-color: rgba(0, 75, 141, 0.35);
+    background-color: rgba(0, 75, 141, 0.12);
+    color: #004b8d;
+}
+
+.edpreset-pill-existing {
+    border-color: rgba(125, 125, 125, 0.35);
+    background-color: rgba(125, 125, 125, 0.12);
+    color: inherit;
+}
+
+/* While an item is being dragged, core/sortable_list clones it into a floating proxy. */
+.edpreset-reorder-item.sortable-list-is-dragged {
+    box-shadow: 0 6px 18px rgba(16, 40, 70, 0.18);
+    cursor: grabbing;
+}
+
+.edpreset-reorder-name-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.edpreset-reorder-meta-group {
+    display: flex;
+    gap: 0.5rem;
 }

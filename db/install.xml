@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/edpreset/db" VERSION="20260802" COMMENT="XMLDB file for Moodle mod_edpreset"
+<XMLDB PATH="mod/edpreset/db" VERSION="20260813" COMMENT="XMLDB file for Moodle mod_edpreset"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -31,13 +31,15 @@
         <FIELD NAME="help" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Cleaned HTML shown in the chooser info panel. Exported as PARAM_RAW by core, so it MUST be format_text()ed before it is stored here."/>
         <FIELD NAME="description" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Cleaned HTML rendered from edpreset_meta.description at bake time. Shown on the preset chooser page's cards."/>
         <FIELD NAME="teacherguidance" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Cleaned HTML rendered from edpreset_meta.teacherguidance at bake time. Read live by mod_ednote every time a teacher note renders, so editing the exemplar's guidance updates every note already in a course. Never copied into the note itself."/>
-        <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Normalised comma-separated tags, copied from edpreset_meta.tags"/>
-        <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied. 250 not 255: cmactions::rename() rejects anything over 255 and its clean_param(PARAM_CLEANHTML) can lengthen the string."/>
+        <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Normalised comma-separated tags, copied from edpreset_meta.tags"/>
+        <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied. 250 not 255: cmactions::rename() rejects anything over 255 and its clean_param(PARAM_CLEANHTML) can lengthen the string."/>
         <FIELD NAME="icon" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="monologo" SEQUENCE="false" COMMENT="pix icon name. The component is always mod_&lt;modname&gt;. Rendered HTML is deliberately not stored."/>
         <FIELD NAME="archetype" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="MOD_ARCHETYPE_* of the exemplar - decides the chooser tab"/>
         <FIELD NAME="purpose" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="other" SEQUENCE="false" COMMENT="MOD_PURPOSE_* of the exemplar - decides the icon colour"/>
         <FIELD NAME="branded" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="category" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Section name of the exemplar in the template course"/>
+        <FIELD NAME="templatename" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Section name with the [Template] marker stripped, when the exemplar's section is a section template. Non-empty is the flag that this preset is a template member: such presets are offered only as part of their template, never individually. Denormalised onto every member row exactly as category already is."/>
+        <FIELD NAME="templatesummary" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Cleaned HTML of the section summary, rendered at bake time. Shown as the template card's description. Repeated on every member row; the card reads it from whichever member it likes."/>
         <FIELD NAME="sectionnum" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="sortorder" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="sectionnum * 1000 + position. The chooser re-sorts by title, so this is for the manage page."/>
         <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="pending|baking|validating|ready|failed. Describes the pipeline; chooser visibility is decided by the live backup file, not by this."/>
@@ -72,8 +74,8 @@
         <FIELD NAME="presetname" TYPE="char" LENGTH="60" NOTNULL="true" SEQUENCE="false" COMMENT="What the teacher sees, independent of the exemplar's activity name"/>
         <FIELD NAME="description" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="Raw markdown as typed. Rendered and cleaned at bake time, never at display time."/>
         <FIELD NAME="teacherguidance" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Optional raw markdown as typed - guidance and next steps for the teacher adding this preset, never seen by students. Rendered and cleaned at bake time like description. NOTNULL false because it is optional; description is not."/>
-        <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Normalised comma-separated list, e.g. 'Assessment, Engage with content'"/>
-        <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" DEFAULT="" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied into a course. See edpreset_item.defaultname for why 250."/>
+        <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Normalised comma-separated list, e.g. 'Assessment, Engage with content'"/>
+        <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied into a course. See edpreset_item.defaultname for why 250."/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>

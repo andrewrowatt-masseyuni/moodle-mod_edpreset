@@ -1,0 +1,104 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/reorder_modal
+
+    The body of the dialogue shown when a section template is added to a section that already has
+    activities in it.
+
+    The left column is the order the section will end up in; the right column holds the activities
+    already in the course, for the teacher to drag across. Anything left on the right when they
+    confirm is appended below the template, keeping its relative order - so the dialogue can always
+    be confirmed without dragging anything.
+
+    Only the course's own activities can be dragged. The template's activities are fixed in the order
+    its curator arranged them, and act purely as the positions to drop between.
+
+    Teacher notes are deliberately absent from both lists. A note belongs immediately above the one
+    activity it describes, and letting it be dragged away from that activity would only produce
+    orphans, so mod_edpreset re-attaches each note when it writes the final order.
+
+    Every item carries data-token, which is what mod_edpreset/reorder reads back: p<presetid> for an
+    activity the template will add, c<cmid> for one already in the course. The token, not the column
+    an item happens to be sitting in, is what says where it came from.
+
+    Context variables required for this template:
+    * uniqid string - supplied by the renderer, makes the two list ids unique
+    * templateitems array - token, name, modfullname, icon, istemplate
+    * courseitems array - token, name, modfullname, icon, istemplate
+    * hascourseitems bool
+
+    Example context (json):
+    {
+        "uniqid": "abc123",
+        "hascourseitems": true,
+        "templateitems": [
+            {
+                "token": "p7",
+                "name": "Weekly reading",
+                "modfullname": "Book",
+                "icon": "<img src='#' alt=''>",
+                "istemplate": true
+            }
+        ],
+        "courseitems": [
+            {
+                "token": "c42",
+                "name": "Course introduction",
+                "modfullname": "Page",
+                "icon": "<img src='#' alt=''>",
+                "istemplate": false
+            }
+        ]
+    }
+}}
+<div class="edpreset-reorder" data-region="reorder">
+    <p class="edpreset-reorder-intro">{{#str}} reorder:instructions, mod_edpreset {{/str}}</p>
+
+    <div class="row">
+        <div class="col-12 col-md-6 mb-3 mb-md-0">
+            <h6 class="edpreset-reorder-heading" id="edpreset-reorder-target-{{uniqid}}">
+                {{#str}} reorder:targetheading, mod_edpreset {{/str}}
+            </h6>
+            <div class="edpreset-reorder-list"
+                 data-region="targetlist"
+                 aria-labelledby="edpreset-reorder-target-{{uniqid}}"
+            >
+                {{#templateitems}}
+                    {{> mod_edpreset/reorder_item }}
+                {{/templateitems}}
+            </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+            <h6 class="edpreset-reorder-heading" id="edpreset-reorder-source-{{uniqid}}">
+                {{#str}} reorder:sourceheading, mod_edpreset {{/str}}
+            </h6>
+            <div class="edpreset-reorder-list"
+                 data-region="sourcelist"
+                 aria-labelledby="edpreset-reorder-source-{{uniqid}}"
+            >
+                {{#courseitems}}
+                    {{> mod_edpreset/reorder_item }}
+                {{/courseitems}}
+            </div>
+            {{^hascourseitems}}
+                <p class="text-muted small">{{#str}} reorder:sourceempty, mod_edpreset {{/str}}</p>
+            {{/hascourseitems}}
+        </div>
+    </div>
+</div>

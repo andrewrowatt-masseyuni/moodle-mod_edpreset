@@ -1,0 +1,135 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/chooser_template_card
+
+    One section template on the preset activities page: a whole section of the template course,
+    offered as a single addable set.
+
+    Deliberately carries data-templatesection rather than data-presetid. mod_edpreset/chooser parses
+    data-presetid and then dereferences the card's select button without checking it exists, so a
+    card with a preset id but no select button would throw the moment anything tried to select one.
+    It does carry data-searchtext and data-tagkeys, because the filter walks every card in a group
+    and reads both unguarded.
+
+    Context variables required for this template:
+    * templatesection int - section number in the template course; the template's identity
+    * title string - the section name, with the [Template] marker already stripped
+    * description string - already cleaned HTML of the section summary, rendered unescaped
+    * icon string - pre-rendered icon HTML, taken from the section's first activity
+    * modname string - the first activity's module, for the icon container
+    * purpose string - the first activity's MOD_PURPOSE_*, which colours the icon
+    * branded bool - whether the first activity's icon is branded and must not be recoloured
+    * hasmultipletypes bool - the set spans more than one activity type, so the icon is drawn stacked
+    * locked bool - a different template has already been used in this course, so this one cannot be
+      chosen: the card is greyed out, its button disabled, and a note explaining why sits below it
+    * modfullname string - the distinct activity types, e.g. "Book, Page, Quiz"
+    * count int - how many activities the template adds
+    * addurl string - a copy.php link carrying the template
+    * searchtext string - lowercased title, description, activity types and tags, for the filter
+    * tagkeys string - lowercased tags, pipe separated, for the in-page tag filter
+    * hastags bool
+    * tags array - name
+
+    Example context (json):
+    {
+        "templatesection": 3,
+        "title": "Weekly teaching cycle",
+        "description": "<p>A prepare, engage, consolidate sequence for one week.</p>",
+        "icon": "<img src='#' alt=''>",
+        "modname": "book",
+        "purpose": "content",
+        "branded": false,
+        "hasmultipletypes": true,
+        "locked": false,
+        "modfullname": "Book, Page, Quiz",
+        "count": 4,
+        "addurl": "https://moodle.local/mod/edpreset/copy.php?template=3",
+        "searchtext": "weekly teaching cycle book page quiz",
+        "tagkeys": "engage with content",
+        "hastags": true,
+        "tags": [{"name": "Engage with content"}]
+    }
+}}
+{{!
+    The card and its note are wrapped together so the pair occupies a single cell of the card grid,
+    and so the filter - which toggles d-none on whatever carries data-region="card" - hides the note
+    along with the card it explains rather than stranding it.
+}}
+<div class="edpreset-cardwrap"
+     data-region="card"
+     data-templatesection="{{templatesection}}"
+     data-title="{{title}}"
+     data-searchtext="{{searchtext}}"
+     data-tagkeys="{{tagkeys}}"
+>
+<div class="card edpreset-card edpreset-template-card {{#locked}}edpreset-card-locked{{/locked}}">
+    <div class="card-body d-flex flex-column">
+        <div class="d-flex align-items-center mb-2">
+            <h3 class="h6 mb-0 flex-grow-1 edpreset-card-title">{{title}}</h3>
+            <span class="edpreset-tag edpreset-template-count ms-2">
+                {{#str}} chooser:templatecount, mod_edpreset, {{count}} {{/str}}
+            </span>
+        </div>
+        <div class="d-flex align-items-center edpreset-modinfo edpreset-modinfo_{{modname}} mb-2">
+            <div class="edpreset-card-icon icon-no-margin modicon_{{modname}} activityiconcontainer smaller {{purpose}} {{#branded}}isbranded{{/branded}} {{#hasmultipletypes}}edpreset-card-icon-stacked{{/hasmultipletypes}} me-1">
+                {{{icon}}}
+            </div>
+            <small>{{modfullname}}</small>
+        </div>
+
+        <div class="edpreset-card-description flex-grow-1">{{{description}}}</div>
+
+        {{#hastags}}
+            <div class="edpreset-tags mt-2">
+                {{#tags}}
+                    <button type="button"
+                            class="edpreset-tag"
+                            data-action="tag"
+                            data-tag="{{name}}"
+                            aria-pressed="false"
+                            aria-label="{{#str}} chooser:filterbytag, mod_edpreset, {{name}} {{/str}}"
+                    >{{name}}</button>
+                {{/tags}}
+            </div>
+        {{/hastags}}
+
+        <div class="edpreset-card-actions d-flex align-items-center mt-3">
+            {{#locked}}
+                {{! A real disabled button rather than a styled-off link: an anchor cannot be
+                    disabled, and copy.php refuses this template anyway - the button is the courtesy,
+                    not the control. }}
+                <button type="button" class="btn btn-secondary btn-sm flex-grow-1" disabled>
+                    <i class="icon fa fa-solid fa-ban fa-fw" aria-hidden="true"></i>
+                    {{#str}} chooser:addtocourse, mod_edpreset {{/str}}
+                </button>
+            {{/locked}}
+            {{^locked}}
+                {{! An ordinary link, so a template can still be added with JavaScript off - it just
+                    goes in as it stands, without the chance to interleave it with what is already
+                    there. }}
+                <a href="{{addurl}}" class="btn btn-primary btn-sm flex-grow-1" data-action="addtemplate">
+                    {{#str}} chooser:addtocourse, mod_edpreset {{/str}}
+                </a>
+            {{/locked}}
+        </div>
+    </div>
+</div>
+{{#locked}}
+    <div class="edpreset-card-note">{{#str}} templatelocked, mod_edpreset {{/str}}</div>
+{{/locked}}
+</div>

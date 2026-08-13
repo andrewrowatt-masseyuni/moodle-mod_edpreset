@@ -15,21 +15,26 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Version information for the activity preset provider.
+ * Install-time setup for the activity preset provider.
+ *
+ * Runs once, after db/install.xml has been applied, and only on a fresh install. There is
+ * deliberately no matching upgrade step: the course custom field created here is a convenience for
+ * administrators rather than something the plugin depends on, and everything that touches it treats
+ * its absence as normal. See \mod_edpreset\local\coursedefault.
  *
  * @package    mod_edpreset
+ * @category   upgrade
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
+/**
+ * Custom code to be run on installing the plugin.
+ *
+ * @return bool
+ */
+function xmldb_edpreset_install() {
+    \mod_edpreset\local\coursedefault::install();
 
-$plugin->component = 'mod_edpreset';
-$plugin->release = '0.5.0';
-$plugin->version = 2026081300;
-$plugin->requires = 2024100700;
-// Pinned to 4.5 deliberately: this plugin depends on the legacy get_course_content_items
-// callback, which Moodle has been migrating to the hook API. Do not widen this without
-// re-checking that callback still exists and is still dispatched.
-$plugin->supported = [405, 405];
-$plugin->maturity = MATURITY_ALPHA;
+    return true;
+}

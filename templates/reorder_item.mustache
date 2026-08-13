@@ -1,0 +1,104 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/reorder_item
+
+    One activity in the section template reorder dialogue.
+
+    Rendered identically in both columns, because an item keeps its own identity when it is dragged
+    across: the pill says where the activity came from, not which column it is sitting in.
+
+    Only the teacher's own activities are draggable. A template's activities are shown in the order
+    its curator arranged them and stay there, so they get no drag handle - core/drag_handle's
+    data-drag-type="move" is what core/sortable_list looks for, and without it a drag never starts.
+    A blank handle-sized spacer takes its place so both kinds of row line up.
+
+    Plain divs rather than an li, and with no list ARIA roles, because the Mustache linter renders
+    this partial on its own and either an li or a role="listitem" is invalid without its container.
+    core/sortable_list does not care what the elements are - core's own callers use table rows - and
+    the interaction that matters for assistive technology is the drag handle below, which is a
+    labelled button and opens core/sortable_list's own keyboard move dialogue.
+
+    Context variables required for this template:
+    * token string - p<presetid> for a template activity, c<cmid> for one already in the course
+    * name string - the name the activity will have
+    * modfullname string - the human-readable activity type, e.g. "Book"
+    * icon string - pre-rendered icon HTML
+    * modname string - the activity's module, for the icon container
+    * purpose string - the activity's MOD_PURPOSE_*, which colours the icon
+    * branded bool - whether the icon is branded and must not be recoloured
+    * istemplate bool - whether this activity comes from the template
+    * movetitle string - the drag handle's label; core/drag_handle takes it as a plain variable.
+      Unused for a template activity, which has no handle.
+
+    Example context (json):
+    {
+        "token": "p7",
+        "name": "Weekly reading",
+        "modfullname": "Book",
+        "icon": "<img src='#' alt=''>",
+        "modname": "book",
+        "purpose": "content",
+        "branded": false,
+        "istemplate": true,
+        "movetitle": "Move Weekly reading"
+    }
+}}
+<div class="edpreset-reorder-item {{#istemplate}}edpreset-reorder-item-template{{/istemplate}}{{^istemplate}}edpreset-reorder-item-course{{/istemplate}}"
+     data-token="{{token}}"
+>
+    {{! Only the teacher's own activities get a handle. core/sortable_list refuses to start a drag
+        unless the mousedown landed inside its moveHandlerSelector, so leaving the handle off is what
+        pins the template's activities in the order the curator set. They are still perfectly good
+        drop positions: the list builds destinations from its children, handle or no handle. }}
+    {{#istemplate}}
+        <span class="edpreset-reorder-handle edpreset-reorder-handle-fixed" aria-hidden="true">
+            <span class="fa-stack">
+                <i class="icon fa fa-solid fa-arrows-up-down-left-right fa-fw fa-stack-1x" aria-hidden="true"></i>
+                <i class="icon fa fa-solid fa-ban fa-stack-1x fa-xs"></i>
+            </span>
+        </span>
+    {{/istemplate}}
+    {{^istemplate}}
+        <span class="edpreset-reorder-handle">
+            {{> core/drag_handle }}
+        </span>
+    {{/istemplate}}
+    <div class="w-100">
+        <div class="edpreset-reorder-name">{{name}}</div>
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="d-flex align-items-center edpreset-modinfo">
+                <div class="edpreset-card-icon icon-no-margin modicon_{{modname}} activityiconcontainer smaller {{purpose}} isbranded me-1">
+                    {{{icon}}}
+                </div>
+                <small class="text-muted">{{modfullname}}</small>
+            </div>
+            {{#istemplate}}
+                <span class="edpreset-tag edpreset-pill edpreset-pill-template"
+                    data-toggle="tooltip"
+                    title="{{#str}} reorder:templatepill_help, mod_edpreset {{/str}}"
+                >{{#str}} reorder:templatepill, mod_edpreset {{/str}}</span>
+            {{/istemplate}}
+            <!--{{^istemplate}}
+                <span class="edpreset-tag edpreset-pill edpreset-pill-existing"
+                    data-toggle="tooltip"
+                    title="{{#str}} reorder:existingpill_help, mod_edpreset {{/str}}"
+                >{{#str}} reorder:existingpill, mod_edpreset {{/str}}</span>
+            {{/istemplate}}-->
+        </div>
+    </div>
+</div>
