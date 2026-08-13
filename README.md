@@ -574,14 +574,32 @@ reference back to this plugin.
 `privacy\provider` implements the metadata, plugin, userlist and user-preference providers. The
 presets themselves hold nothing personal — they describe exemplar activities, and the stored backups
 are taken with user data excluded. What is covered is the starred presets (via the `core_favourites`
-subsystem link, always in the user's own context) and the collapsed-groups preference, which is
-exported as a count rather than as its raw list of hashes.
+subsystem link, always in the user's own context), the collapsed-groups preference, which is
+exported as a count rather than as its raw list of hashes, and the curator authorship stamp on the
+two preset tables.
+
+That last one is not optional. `edpreset_meta` and `edpreset_item` are both `core\persistent`
+subclasses, so every save writes `usermodified`, and core's privacy `provider_test` has a
+`test_table_coverage` case that fails the whole site's test run for any table with a user foreign
+key that no metadata provider declares. Both tables are therefore declared with
+`add_database_table()`.
+
+Two decisions about how that stamp is handled:
+
+* **It is held against the system context**, not the exemplar's module context. Presets are site
+  configuration — administered from an admin page, stored in system-context file areas — and a
+  stale `edpreset_item` row outlives the activity it was derived from until the next reconcile, so
+  keying on the exemplar's context would leave rows that a deletion request could never reach.
+* **Deletion anonymises rather than deletes.** The rows are what the chooser offers every teacher;
+  they are not the requesting user's to remove. Every deletion path sets `usermodified` back to the
+  zero it holds before anyone has saved the row, and leaves the row standing. This is what
+  `quizaccess_seb` does with the same stamp on its own settings and template tables.
 
 ## Testing
 
 The plugin ships PHPUnit coverage for the access rules, the copier, the baker, the progress reporter,
-the external function, the form elements, the library functions, the sandbox and the scrubber, plus a
-test data generator.
+the external function, the form elements, the library functions, the privacy provider, the sandbox
+and the scrubber, plus a test data generator.
 
 ```
 vendor/bin/phpunit --testsuite mod_edpreset_testsuite

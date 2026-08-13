@@ -129,8 +129,17 @@ $string['presetteacherguidance'] = 'Teacher guidance';
 $string['presetteacherguidance_help'] = 'Optional guidance and next steps for the teacher who adds this preset, for example what to set before releasing it to students.
 
 Students never see this. It is shown on the preset list before the preset is added, and added to the course as a teacher-only note above the activity. Editing it here updates every note already in a course.';
+$string['privacy:metadata:edpreset_item'] = 'The preset activities offered to teachers, derived from the exemplar activities in the template course. This includes the ID of the last user to save the preset.';
+$string['privacy:metadata:edpreset_item:timecreated'] = 'The time the preset activity was first derived.';
+$string['privacy:metadata:edpreset_item:timemodified'] = 'The time the preset activity was last rebuilt.';
+$string['privacy:metadata:edpreset_item:usermodified'] = 'The ID of the user who last saved the preset activity.';
+$string['privacy:metadata:edpreset_meta'] = 'The preset details a curator records against an exemplar activity in the template course. This includes the ID of the last user to save those details.';
+$string['privacy:metadata:edpreset_meta:timecreated'] = 'The time the preset details were first recorded.';
+$string['privacy:metadata:edpreset_meta:timemodified'] = 'The time the preset details were last saved.';
+$string['privacy:metadata:edpreset_meta:usermodified'] = 'The ID of the user who last saved the preset details.';
 $string['privacy:metadata:favourites'] = 'Preset activities a user has starred on the preset activities page.';
 $string['privacy:metadata:preference:collapsed'] = 'Which groups of preset activities the user has collapsed on the preset activities page.';
+$string['privacy:path:authored'] = 'Preset activities last saved by this user';
 $string['privacy:path:favourites'] = 'Starred preset activities';
 $string['reorder:confirm'] = 'Add to course';
 $string['reorder:existingpill'] = 'Existing';
