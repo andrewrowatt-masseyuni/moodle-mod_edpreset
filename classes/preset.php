@@ -95,6 +95,12 @@ class preset extends persistent {
             'purpose' => ['type' => PARAM_ALPHA, 'default' => MOD_PURPOSE_OTHER],
             'branded' => ['type' => PARAM_BOOL, 'default' => 0],
             'category' => ['type' => PARAM_TEXT, 'default' => ''],
+            // Non-empty means this preset is a member of a section template, and is therefore
+            // offered only as part of that template - never as a card of its own.
+            'templatename' => ['type' => PARAM_TEXT, 'default' => ''],
+            // Cleaned HTML like description, and PARAM_RAW for the same reason: the cleaning has
+            // already happened at bake time and must not be repeated or escaped here.
+            'templatesummary' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'sectionnum' => ['type' => PARAM_INT, 'default' => 0],
             'sortorder' => ['type' => PARAM_INT, 'default' => 0],
             'status' => [
@@ -118,6 +124,18 @@ class preset extends persistent {
             'exemplartimemodified' => ['type' => PARAM_INT, 'default' => 0],
             'enabled' => ['type' => PARAM_BOOL, 'default' => 1],
         ];
+    }
+
+    /**
+     * Whether this preset belongs to a section template.
+     *
+     * A member is offered only as part of its template: it is kept out of the standard activity
+     * chooser and out of the preset chooser page's category groups.
+     *
+     * @return bool
+     */
+    public function is_template_member(): bool {
+        return trim((string)$this->get('templatename')) !== '';
     }
 
     /**

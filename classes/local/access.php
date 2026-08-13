@@ -42,6 +42,16 @@ class access {
     public const MAX_PRESETS = 20;
 
     /**
+     * @var int How many positions one reorder may describe.
+     *
+     * The list covers the template's own activities plus everything already in the target section,
+     * teacher notes included, so it is legitimately longer than MAX_PRESETS. This is only here to
+     * stop a hand-edited request from making the reorder loop - which rebuilds the course cache
+     * twice per position - run for an unbounded time.
+     */
+    public const MAX_ORDER_TOKENS = 200;
+
+    /**
      * Require that the current user may copy a preset into a course section.
      *
      * @param stdClass $course The target course.
@@ -94,6 +104,38 @@ class access {
         }
 
         return $ids;
+    }
+
+    /**
+     * Turn the order request parameter into the list of positions to apply.
+     *
+     * Unrecognised tokens are dropped rather than rejected: the list is assembled in the browser
+     * from a section that may have changed since, and a stale entry should not cost the teacher the
+     * whole add. What it must not do is let something arbitrary through to be resolved later.
+     *
+     * @param string $order Comma-separated p<presetid> / c<cmid> tokens.
+     * @return string[] The recognised tokens, order preserved, deduplicated.
+     * @throws moodle_exception If the list is longer than MAX_ORDER_TOKENS.
+     */
+    public static function clean_order(string $order): array {
+        if (trim($order) === '') {
+            return [];
+        }
+
+        $tokens = explode(',', $order);
+        if (count($tokens) > self::MAX_ORDER_TOKENS) {
+            throw new moodle_exception('toomanypositions', 'mod_edpreset', '', self::MAX_ORDER_TOKENS);
+        }
+
+        $clean = [];
+        foreach ($tokens as $token) {
+            $token = trim($token);
+            if (preg_match('/^[pc][1-9][0-9]*$/', $token)) {
+                $clean[$token] = true;
+            }
+        }
+
+        return array_keys($clean);
     }
 
     /**

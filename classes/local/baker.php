@@ -56,7 +56,7 @@ class baker {
                 continue;
             }
 
-            $category = get_section_name($course, $sectioninfo);
+            $sectiondata = self::section_data($course, $sectioninfo);
             $cmids = $modinfo->sections[$sectioninfo->section] ?? [];
 
             foreach ($cmids as $index => $cmid) {
@@ -66,7 +66,7 @@ class baker {
                 }
 
                 $sortorder = ($sectioninfo->section * 1000) + $index;
-                $preset = self::upsert($course, $cm, $category, $sortorder);
+                $preset = self::upsert($course, $cm, $sectiondata, $sortorder);
                 $seen[] = (int)$preset->get('id');
 
                 if (self::needs_baking($preset)) {
@@ -140,6 +140,72 @@ class baker {
     }
 
     /**
+     * The section-level values every preset in a section carries.
+     *
+     * All three are denormalised onto each member row rather than held anywhere central, which is
+     * what lets the chooser page build itself from a single query over the presets.
+     *
+     * @param stdClass $course The template course.
+     * @param section_info $sectioninfo The section.
+     * @return array{category: string, templatename: string, templatesummary: string}
+     */
+    protected static function section_data(stdClass $course, section_info $sectioninfo): array {
+        // Deliberately the raw name: get_section_name() below is format_string()ed and falls back to
+        // "Topic 3", neither of which should decide whether a section is a template.
+        $istemplate = template::is_template_section_name($sectioninfo->name);
+
+        return [
+            'category' => get_section_name($course, $sectioninfo),
+            'templatename' => $istemplate
+                ? format_string(
+                    template::strip_template_marker($sectioninfo->name),
+                    true,
+                    ['context' => \context_course::instance((int)$course->id)]
+                )
+                : '',
+            'templatesummary' => $istemplate ? self::render_section_summary($sectioninfo) : '',
+        ];
+    }
+
+    /**
+     * Turn a template section's summary into the cleaned HTML shown on its card.
+     *
+     * Deliberately cleaned - noclean false - where core renders section summaries with noclean true
+     * (see core_courseformat\output\local\content\section\summary::format_summary_text). Core's
+     * summaries are only ever seen by people already in that course; this one is read by every
+     * teacher on the site who opens the preset chooser, so it crosses the same trust boundary as a
+     * preset description and gets the same treatment.
+     *
+     * Note that a summary embedding an uploaded file will render a broken link for anyone who cannot
+     * access the template course: core serves that filearea through require_course_login(). Section
+     * summaries used as template descriptions should be text.
+     *
+     * @param section_info $sectioninfo The template section.
+     * @return string Cleaned HTML, or '' when the section has no summary.
+     */
+    protected static function render_section_summary(section_info $sectioninfo): string {
+        $summary = (string)$sectioninfo->summary;
+        if (trim($summary) === '') {
+            return '';
+        }
+
+        $context = \context_course::instance((int)$sectioninfo->course);
+
+        return format_text(
+            file_rewrite_pluginfile_urls(
+                $summary,
+                'pluginfile.php',
+                $context->id,
+                'course',
+                'section',
+                $sectioninfo->id
+            ),
+            (int)$sectioninfo->summaryformat,
+            ['context' => $context, 'noclean' => false]
+        );
+    }
+
+    /**
      * Create or update the preset row for an exemplar.
      *
      * Rows are upserted on templatecmid, never deleted and reinserted, because user favourites and
@@ -148,11 +214,11 @@ class baker {
      *
      * @param stdClass $course The template course.
      * @param cm_info $cm The exemplar.
-     * @param string $category The section name.
+     * @param array $sectiondata As returned by section_data().
      * @param int $sortorder The display order.
      * @return preset
      */
-    protected static function upsert(stdClass $course, cm_info $cm, string $category, int $sortorder): preset {
+    protected static function upsert(stdClass $course, cm_info $cm, array $sectiondata, int $sortorder): preset {
         // Guaranteed by cm_is_scannable(), which is the gate on getting here at all.
         $details = meta::get_for_cm((int)$cm->id);
 
@@ -172,7 +238,9 @@ class baker {
         $preset->set('teacherguidance', self::render_guidance($details));
         $preset->set('tags', $details->get('tags'));
         $preset->set('defaultname', $details->get('defaultname'));
-        $preset->set('category', $category);
+        $preset->set('category', $sectiondata['category']);
+        $preset->set('templatename', $sectiondata['templatename']);
+        $preset->set('templatesummary', $sectiondata['templatesummary']);
         $preset->set('sectionnum', (int)$cm->sectionnum);
         $preset->set('sortorder', $sortorder);
         $preset->set('archetype', (int)plugin_supports('mod', $cm->modname, FEATURE_MOD_ARCHETYPE, MOD_ARCHETYPE_OTHER));

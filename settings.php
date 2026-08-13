@@ -74,6 +74,29 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_heading(
+        'mod_edpreset/templateheading',
+        get_string('settings:templateheading', 'mod_edpreset'),
+        get_string('settings:templateheading_desc', 'mod_edpreset')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'mod_edpreset/preventmixing',
+        get_string('settings:preventmixing', 'mod_edpreset'),
+        get_string('settings:preventmixing_desc', 'mod_edpreset'),
+        1
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'mod_edpreset/ignoreinvalidtemplate',
+        get_string('settings:ignoreinvalidtemplate', 'mod_edpreset'),
+        get_string('settings:ignoreinvalidtemplate_desc', 'mod_edpreset'),
+        1
+    ));
+
+    // It only qualifies the lock, so it means nothing with the lock switched off.
+    $settings->hide_if('mod_edpreset/ignoreinvalidtemplate', 'mod_edpreset/preventmixing', 'notchecked');
+
+    $settings->add(new admin_setting_heading(
         'mod_edpreset/sandboxheading',
         get_string('settings:sandboxheading', 'mod_edpreset'),
         get_string('settings:sandboxheading_desc', 'mod_edpreset')

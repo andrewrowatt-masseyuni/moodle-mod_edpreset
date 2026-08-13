@@ -17,13 +17,14 @@
 /**
  * Copy one or more preset activities into a course, then return to the course section.
  *
- * The only way presets get into a course. One preset or ten take the same route: the restores run
- * sequentially in this request and the teacher is sent back to the section once they are done.
+ * The only way presets get into a course. One preset, ten, or a whole section template take the same
+ * route: the restores run sequentially in this request and the teacher is sent back to the section
+ * once they are done.
  *
- * Two things reach here. The standard activity chooser follows a link carrying a single preset id,
- * appending section, beforemod and sr to it from its own JavaScript. The preset chooser page posts
- * a form carrying however many the teacher selected. required_param() reads either, so there is one
- * handler and no branch.
+ * Three things reach here. The standard activity chooser follows a link carrying a single preset id,
+ * appending section, beforemod and sr to it from its own JavaScript. The preset chooser page posts a
+ * form carrying however many the teacher selected. A section template card carries a template rather
+ * than a preset list, and - when the teacher was offered the reorder dialogue - the order they chose.
  *
  * Note that this deliberately does not end on the new activity's settings form the way every other
  * activity chooser item does. A preset arrives already configured - that is the point of it - and
@@ -41,8 +42,14 @@ use mod_edpreset\preset;
 use mod_edpreset\local\access;
 use mod_edpreset\local\activity_copier;
 use mod_edpreset\local\chooser;
+use mod_edpreset\local\coursedefault;
+use mod_edpreset\local\section_template;
 
-$presetids = required_param('presets', PARAM_SEQUENCE);
+// Either a preset list or a template, never both. Both are optional so that one handler can read
+// either; the check that exactly one arrived is below.
+$presetids = optional_param('presets', '', PARAM_SEQUENCE);
+$templatesection = optional_param('template', 0, PARAM_INT);
+$order = optional_param('order', '', PARAM_TEXT);
 $courseid = required_param('course', PARAM_INT);
 $sectionnum = required_param('section', PARAM_INT);
 $beforemod = optional_param('beforemod', 0, PARAM_INT);
@@ -57,28 +64,56 @@ require_sesskey();
 $coursecontext = context_course::instance($course->id);
 access::require_can_copy_into($course, $sectionnum);
 
-// Every preset is loaded and checked before any of them is restored, so a bad id fails with
-// nothing yet committed rather than half way through a batch.
+// Everything is loaded and checked before any of it is restored, so a bad id fails with nothing yet
+// committed rather than half way through a batch.
+$template = null;
 $presets = [];
-foreach (access::clean_presets($presetids) as $presetid) {
-    $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
-    if (!$preset || !$preset->is_live()) {
+
+if ($templatesection) {
+    $template = section_template::for_section($templatesection);
+    if (!$template) {
         throw new moodle_exception('invalidpreset', 'mod_edpreset');
     }
-    $presets[] = $preset;
+    // A course keeps to one template. The chooser already shows the others as unchoosable, but a
+    // disabled button is a courtesy rather than a control - this is where it is actually enforced.
+    if (!coursedefault::allows((int)$course->id, $template->get_name())) {
+        throw new moodle_exception('templatelocked', 'mod_edpreset');
+    }
+
+    $presets = $template->get_members();
+    // A template is authored rather than selected, so this is a curator having built something too
+    // large rather than a teacher having over-selected - but the restores cost the same either way.
+    if (count($presets) > access::MAX_PRESETS) {
+        throw new moodle_exception('toomanypresets', 'mod_edpreset', '', access::MAX_PRESETS);
+    }
+} else {
+    foreach (access::clean_presets($presetids) as $presetid) {
+        $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
+        if (!$preset || !$preset->is_live()) {
+            throw new moodle_exception('invalidpreset', 'mod_edpreset');
+        }
+        $presets[] = $preset;
+    }
 }
 
 $beforemod = access::clean_beforemod($course, $beforemod);
+$order = access::clean_order($order);
 
-$heading = count($presets) === 1
-    ? get_string('creatingactivity', 'mod_edpreset', $presets[0]->get('title'))
-    : get_string('creatingactivities', 'mod_edpreset', count($presets));
+if ($template) {
+    $heading = get_string('creatingtemplate', 'mod_edpreset', $template->get_name());
+} else if (count($presets) === 1) {
+    $heading = get_string('creatingactivity', 'mod_edpreset', $presets[0]->get('title'));
+} else {
+    $heading = get_string('creatingactivities', 'mod_edpreset', count($presets));
+}
 
-$PAGE->set_url(new moodle_url('/mod/edpreset/copy.php', [
-    'presets' => implode(',', array_map(fn($preset) => $preset->get('id'), $presets)),
-    'course' => $courseid,
-    'section' => $sectionnum,
-]));
+$urlparams = ['course' => $courseid, 'section' => $sectionnum];
+if ($template) {
+    $urlparams['template'] = $templatesection;
+} else {
+    $urlparams['presets'] = implode(',', array_map(fn($preset) => $preset->get('id'), $presets));
+}
+$PAGE->set_url(new moodle_url('/mod/edpreset/copy.php', $urlparams));
 $PAGE->set_course($course);
 $PAGE->set_context($coursecontext);
 $PAGE->set_pagelayout('incourse');
@@ -113,10 +148,22 @@ $progress = new \mod_edpreset\local\copy_progress(
 $progress->set_display_names();
 
 try {
-    ['added' => $added, 'failed' => $failed] =
-        activity_copier::copy_many($presets, $course, $sectionnum, $beforemod, $progress);
+    if ($template) {
+        ['added' => $added, 'failed' => $failed] =
+            activity_copier::copy_template($template, $course, $sectionnum, $order, $beforemod, $progress);
+    } else {
+        ['added' => $added, 'failed' => $failed] =
+            activity_copier::copy_many($presets, $course, $sectionnum, $beforemod, $progress);
+    }
 } finally {
     $lock->release();
+}
+
+// Only once something actually landed: a template that failed outright did not become this course's
+// default. Deliberately after the lock is released - it touches the course rather than the section,
+// and it must not fail the add, so it swallows its own errors.
+if ($template && $added) {
+    coursedefault::set((int)$course->id, $template->get_name());
 }
 
 // Queued rather than printed. On the fast path they survive the redirect in the session; on the

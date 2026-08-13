@@ -32,10 +32,12 @@
     * courseid int - the course presets are being added to
     * sectionnum int - the section they will be added to
     * beforemod int - course module id to insert before, or 0
+    * sectionactivitycount int - activities already in that section, teacher notes excluded
+    * templatesonly bool - whether only the section templates are being shown
     * copyurl string - where the selection is posted
     * sesskey string
     * hasgroups bool
-    * groups array - name, key, count, expanded, starred, cards
+    * groups array - name, key, count, expanded, starred, istemplategroup, cards
     * alltags array - name
     * hastags bool
 
@@ -44,6 +46,8 @@
         "courseid": 12,
         "sectionnum": 2,
         "beforemod": 0,
+        "sectionactivitycount": 3,
+        "templatesonly": false,
         "copyurl": "https://moodle.local/mod/edpreset/copy.php",
         "sesskey": "abc123",
         "hasgroups": true,
@@ -56,6 +60,7 @@
                 "count": 1,
                 "expanded": true,
                 "starred": false,
+                "istemplategroup": false,
                 "cards": [
                     {
                         "presetid": 7,
@@ -108,7 +113,8 @@
             {{#str}} chooser:noresults, mod_edpreset {{/str}}
         </div>
 
-        <form method="post" action="{{copyurl}}" data-region="addform">
+        <form method="post" action="{{copyurl}}" data-region="addform"
+              data-sectionactivitycount="{{sectionactivitycount}}">
             <input type="hidden" name="sesskey" value="{{sesskey}}">
             <input type="hidden" name="course" value="{{courseid}}">
             <input type="hidden" name="section" value="{{sectionnum}}">
@@ -117,6 +123,11 @@
                 ever selects a card, so the footer button stays disabled and only the per-card
                 links work. }}
             <input type="hidden" name="presets" value="" data-region="presets">
+            {{! Filled in by mod_edpreset/reorder when a section template needs the teacher to say
+                where its activities go. Empty on every other path, which is what makes this the
+                same form the selection posts through. }}
+            <input type="hidden" name="template" value="" data-region="template">
+            <input type="hidden" name="order" value="" data-region="order">
 
             <div class="edpreset-groups" data-region="groups">
                 {{#groups}}
@@ -144,10 +155,19 @@
                             </a>
                         </div>
                         <div id="edpreset-group-{{key}}-{{uniqid}}" class="collapse {{#expanded}}show{{/expanded}}">
+                            {{! Mustache cannot pick a partial at render time, so the group says
+                                which kind of card it holds and this branches on it. }}
                             <div class="card-body edpreset-cards">
-                                {{#cards}}
-                                    {{> mod_edpreset/chooser_card }}
-                                {{/cards}}
+                                {{^istemplategroup}}
+                                    {{#cards}}
+                                        {{> mod_edpreset/chooser_card }}
+                                    {{/cards}}
+                                {{/istemplategroup}}
+                                {{#istemplategroup}}
+                                    {{#cards}}
+                                        {{> mod_edpreset/chooser_template_card }}
+                                    {{/cards}}
+                                {{/istemplategroup}}
                             </div>
                         </div>
                     </div>
@@ -173,7 +193,10 @@
     {{/hasgroups}}
 
     {{^hasgroups}}
-        <div class="alert alert-info">{{#str}} chooser:nopresets, mod_edpreset {{/str}}</div>
+        <div class="alert alert-info">
+            {{#templatesonly}}{{#str}} chooser:nosectiontemplates, mod_edpreset {{/str}}{{/templatesonly}}
+            {{^templatesonly}}{{#str}} chooser:nopresets, mod_edpreset {{/str}}{{/templatesonly}}
+        </div>
     {{/hasgroups}}
 </div>
 {{#js}}

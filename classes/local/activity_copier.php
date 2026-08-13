@@ -40,6 +40,16 @@ use stored_file;
  */
 class activity_copier {
     /**
+     * The module that carries a preset's teacher guidance into a course.
+     *
+     * A note is chrome belonging to the activity below it rather than an item in its own right, so
+     * everything that counts or orders a section's contents has to know to treat it as such.
+     *
+     * @var string
+     */
+    public const NOTE_MODNAME = 'ednote';
+
+    /**
      * Restore an activity archive into a course and place it.
      *
      * Deliberately shared with the validation pass (see validator), so that the test restore
@@ -161,6 +171,31 @@ class activity_copier {
         int $beforemod = 0,
         ?progress_base $progress = null
     ): cm_info {
+        return self::copy_with_note($preset, $course, $sectionnum, $beforemod, $progress)['cm'];
+    }
+
+    /**
+     * Copy a preset into a course, reporting the teacher note it produced as well as the activity.
+     *
+     * The note's course module id matters to anything that reorders the section afterwards: a note
+     * belongs immediately above the activity it describes, and only the code that created the pair
+     * knows which note goes with which activity.
+     *
+     * @param preset $preset The preset to copy.
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section number to place the activity in.
+     * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param progress_base|null $progress Optional progress reporter.
+     * @return array{cm: cm_info, notecmid: ?int} The new course module, and its note if it got one.
+     * @throws moodle_exception If the preset has no usable archive.
+     */
+    protected static function copy_with_note(
+        preset $preset,
+        stdClass $course,
+        int $sectionnum,
+        int $beforemod = 0,
+        ?progress_base $progress = null
+    ): array {
         global $CFG;
 
         // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
@@ -190,9 +225,12 @@ class activity_copier {
 
         // Here rather than in restore_into(), which the validator's test restore also goes through:
         // the sandbox course must not collect a teacher note on every validation pass.
-        self::emit_note($preset, $course, $sectionnum, $newcmid);
+        $notecmid = self::emit_note($preset, $course, $sectionnum, $newcmid);
 
-        return get_fast_modinfo($course->id)->get_cm($newcmid);
+        return [
+            'cm' => get_fast_modinfo($course->id)->get_cm($newcmid),
+            'notecmid' => $notecmid,
+        ];
     }
 
     /**
@@ -215,8 +253,9 @@ class activity_copier {
      * @param int $sectionnum The section number to place the activities in.
      * @param int $beforemod Course module id to insert before, or 0 to append.
      * @param progress_base|null $progress Optional progress reporter, shared by every copy.
-     * @return array{added: cm_info[], failed: string[]} The new course modules, and the titles of
-     *               the presets that could not be copied.
+     * @return array{added: cm_info[], failed: string[], placed: array<int, array{cmid: int, notecmid: ?int}>}
+     *               The new course modules, the titles of the presets that could not be copied, and
+     *               where each preset that succeeded ended up, keyed by preset id.
      */
     public static function copy_many(
         array $presets,
@@ -227,10 +266,16 @@ class activity_copier {
     ): array {
         $added = [];
         $failed = [];
+        $placed = [];
 
         foreach ($presets as $preset) {
             try {
-                $added[] = self::copy($preset, $course, $sectionnum, $beforemod, $progress);
+                $result = self::copy_with_note($preset, $course, $sectionnum, $beforemod, $progress);
+                $added[] = $result['cm'];
+                $placed[(int)$preset->get('id')] = [
+                    'cmid' => (int)$result['cm']->id,
+                    'notecmid' => $result['notecmid'],
+                ];
             } catch (\Throwable $e) {
                 // The teacher is told which preset failed, but not why - the reasons are restore
                 // internals. Keep the real one where an administrator can find it.
@@ -242,7 +287,214 @@ class activity_copier {
             }
         }
 
-        return ['added' => $added, 'failed' => $failed];
+        return ['added' => $added, 'failed' => $failed, 'placed' => $placed];
+    }
+
+    /**
+     * Copy a whole section template into a course, optionally interleaving it with what is there.
+     *
+     * The section is snapshotted before anything is copied, because working out which teacher note
+     * belongs to which pre-existing activity means reading pairs that are still adjacent - and the
+     * copy itself can splice new modules between them.
+     *
+     * @param section_template $template The template to copy.
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section number to copy into.
+     * @param string[] $order The teacher's chosen order as p<presetid>/c<cmid> tokens. Empty to
+     *                        leave the section in whatever order the copy produced.
+     * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param progress_base|null $progress Optional progress reporter.
+     * @return array{added: cm_info[], failed: string[]}
+     */
+    public static function copy_template(
+        section_template $template,
+        stdClass $course,
+        int $sectionnum,
+        array $order = [],
+        int $beforemod = 0,
+        ?progress_base $progress = null
+    ): array {
+        $before = self::section_cmids($course, $sectionnum);
+
+        $result = self::copy_many($template->get_members(), $course, $sectionnum, $beforemod, $progress);
+
+        if ($order && $result['added']) {
+            self::reorder_section(
+                $course,
+                $sectionnum,
+                self::expand_order($course, $sectionnum, $order, $result['placed'], $before)
+            );
+        }
+
+        return ['added' => $result['added'], 'failed' => $result['failed']];
+    }
+
+    /**
+     * Turn the teacher's chosen order into the full run of course modules the section should hold.
+     *
+     * Teacher notes are never offered to the teacher to arrange - a note is chrome belonging to one
+     * activity, and letting it be dragged away from that activity would only produce orphans - so
+     * they are re-attached here instead: each note is emitted immediately above its own activity.
+     *
+     * Anything in the section that the order does not mention is appended, keeping its relative
+     * order. That is what implements "activities the teacher left alone end up below the template",
+     * and it doubles as the safety net that stops a hand-edited order from losing an activity.
+     *
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section being reordered.
+     * @param string[] $order The p<presetid>/c<cmid> tokens, in the order asked for.
+     * @param array $placed Where each preset landed, keyed by preset id: cmid and notecmid.
+     * @param int[] $before The section's course module ids as they were before the copy.
+     * @return int[] Course module ids, in the order the section should hold them.
+     */
+    protected static function expand_order(
+        stdClass $course,
+        int $sectionnum,
+        array $order,
+        array $placed,
+        array $before
+    ): array {
+        $current = self::section_cmids($course, $sectionnum);
+        $noteof = self::note_pairs($course, $before, $placed);
+
+        $sequence = [];
+        $emitted = [];
+
+        // The teacher's order first, then everything the order did not mention - which is both how
+        // untouched activities end up below the template, and the safety net that stops a stale or
+        // hand-edited order from losing one.
+        foreach (array_merge(self::resolve_order($order, $placed, $current), $current) as $cmid) {
+            foreach ([$noteof[$cmid] ?? 0, $cmid] as $each) {
+                if ($each && !isset($emitted[$each])) {
+                    $emitted[$each] = true;
+                    $sequence[] = $each;
+                }
+            }
+        }
+
+        return $sequence;
+    }
+
+    /**
+     * Which teacher note belongs above which activity.
+     *
+     * Two sources. Notes this copy just made are known exactly, because the copy reported them.
+     * Notes that were already in the section have to be inferred, and the inference is only sound
+     * against the section as it was *before* the copy - which is why the caller snapshots it.
+     *
+     * @param stdClass $course The target course.
+     * @param int[] $before The section's course module ids as they were before the copy.
+     * @param array $placed Where each preset landed, keyed by preset id: cmid and notecmid.
+     * @return array Activity course module id => the course module id of its note.
+     */
+    protected static function note_pairs(stdClass $course, array $before, array $placed): array {
+        $modinfo = get_fast_modinfo($course->id);
+        $cms = $modinfo->get_cms();
+
+        $noteof = [];
+        foreach ($before as $index => $cmid) {
+            $next = $before[$index + 1] ?? 0;
+            if (!isset($cms[$cmid], $cms[$next])) {
+                continue;
+            }
+            // A note describes the activity immediately below it. A note with another note below it
+            // describes nothing, and is left to be appended wherever it falls.
+            if ($cms[$cmid]->modname === self::NOTE_MODNAME && $cms[$next]->modname !== self::NOTE_MODNAME) {
+                $noteof[$next] = $cmid;
+            }
+        }
+
+        foreach ($placed as $placement) {
+            if ($placement['notecmid']) {
+                $noteof[$placement['cmid']] = $placement['notecmid'];
+            }
+        }
+
+        return $noteof;
+    }
+
+    /**
+     * Turn the order tokens into the course module ids they name.
+     *
+     * Tokens that no longer mean anything are dropped rather than raised: the list was assembled in
+     * the browser and can go stale between the dialogue opening and the form arriving - a preset that
+     * failed to restore, an activity someone else deleted - and neither is worth failing the add for.
+     *
+     * @param string[] $order The p<presetid>/c<cmid> tokens, in the order asked for.
+     * @param array $placed Where each preset landed, keyed by preset id: cmid and notecmid.
+     * @param int[] $current The course module ids the section holds now.
+     * @return int[]
+     */
+    protected static function resolve_order(array $order, array $placed, array $current): array {
+        $cmids = [];
+        foreach ($order as $token) {
+            $id = (int)substr($token, 1);
+            $cmid = match ($id ? $token[0] : '') {
+                'p' => (int)($placed[$id]['cmid'] ?? 0),
+                'c' => $id,
+                default => 0,
+            };
+
+            if ($cmid && in_array($cmid, $current, true)) {
+                $cmids[] = $cmid;
+            }
+        }
+
+        return $cmids;
+    }
+
+    /**
+     * Rearrange a section so its activities appear in the given order.
+     *
+     * There is no supported way to write a section's sequence in one go - both course_update_section()
+     * and \core_courseformat\local\sectionactions::update() strip the field out - so this replays
+     * core's own idiom from \core_courseformat\stateactions::cm_move(): walk the wanted order
+     * backwards, moving each module in front of the one placed just after it.
+     *
+     * The modinfo has to be re-read every iteration because each move rebuilds the course cache.
+     *
+     * @param stdClass $course The course.
+     * @param int $sectionnum The section to rearrange.
+     * @param int[] $cmids The course module ids, in the order the section should hold them.
+     */
+    public static function reorder_section(stdClass $course, int $sectionnum, array $cmids): void {
+        global $CFG;
+
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $beforecmid = 0;
+        foreach (array_reverse($cmids) as $cmid) {
+            $modinfo = get_fast_modinfo($course->id);
+
+            $section = $modinfo->get_section_info($sectionnum);
+            if (!$section || !isset($modinfo->get_cms()[$cmid])) {
+                continue;
+            }
+
+            // Already in place. Skipping matters for more than speed: moving a module in front of
+            // itself would delete it from the section and re-append it.
+            if ($beforecmid === $cmid) {
+                continue;
+            }
+
+            moveto_module($modinfo->get_cm($cmid), $section, $beforecmid ?: null);
+            $beforecmid = $cmid;
+        }
+
+        rebuild_course_cache($course->id, true);
+    }
+
+    /**
+     * The course module ids a section holds, in order.
+     *
+     * @param stdClass $course The course.
+     * @param int $sectionnum The section number.
+     * @return int[]
+     */
+    public static function section_cmids(stdClass $course, int $sectionnum): array {
+        $modinfo = get_fast_modinfo($course->id);
+
+        return array_map('intval', $modinfo->sections[$sectionnum] ?? []);
     }
 
     /**

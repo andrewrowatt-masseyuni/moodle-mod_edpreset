@@ -29,6 +29,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 $functions = [
+    'mod_edpreset_get_template_items' => [
+        'classname' => 'mod_edpreset\external\get_template_items',
+        'description' => 'List the activities a section template will add and those the target section already holds.',
+        'type' => 'read',
+        'ajax' => true,
+    ],
     'mod_edpreset_set_favourite' => [
         'classname' => 'mod_edpreset\external\set_favourite',
         'description' => 'Star or unstar a preset activity for the current user.',

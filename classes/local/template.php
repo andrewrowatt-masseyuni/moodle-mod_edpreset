@@ -27,12 +27,58 @@ use stdClass;
  */
 class template {
     /**
+     * The marker that makes a section of the template course a section template.
+     *
+     * @var string
+     */
+    public const TEMPLATE_MARKER = '[Template]';
+
+    /**
      * Whether the plugin is switched on at all.
      *
      * @return bool
      */
     public static function is_enabled(): bool {
         return (bool)get_config('mod_edpreset', 'enabled');
+    }
+
+    /**
+     * Whether a section name marks its section as a section template.
+     *
+     * Deliberately takes the RAW course_sections.name rather than get_section_name(): that runs the
+     * name through format_string(), which a multilang or other filter may rewrite, and falls back to
+     * "Topic 3" for an unnamed section - neither of which should decide whether a section is a
+     * template.
+     *
+     * @param string|null $rawname The raw section name.
+     * @return bool
+     */
+    public static function is_template_section_name(?string $rawname): bool {
+        $name = trim((string)$rawname);
+        if ($name === '') {
+            return false;
+        }
+
+        return \core_text::strtolower(\core_text::substr($name, -\core_text::strlen(self::TEMPLATE_MARKER)))
+            === \core_text::strtolower(self::TEMPLATE_MARKER);
+    }
+
+    /**
+     * A section name with the template marker removed.
+     *
+     * Applied to the raw name, before format_string(), so that the marker cannot survive inside
+     * whatever a filter produces.
+     *
+     * @param string|null $rawname The raw section name.
+     * @return string The name without the marker, trimmed. Unchanged if there was no marker.
+     */
+    public static function strip_template_marker(?string $rawname): string {
+        $name = trim((string)$rawname);
+        if (!self::is_template_section_name($name)) {
+            return $name;
+        }
+
+        return trim(\core_text::substr($name, 0, -\core_text::strlen(self::TEMPLATE_MARKER)));
     }
 
     /**

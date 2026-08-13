@@ -51,5 +51,31 @@ function xmldb_edpreset_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026080200, 'edpreset');
     }
 
+    if ($oldversion < 2026081300) {
+        // Section templates. Both are section-level values denormalised onto every member row, the
+        // same way category already is, so that the chooser page stays a single query.
+        $table = new xmldb_table('edpreset_item');
+
+        // No default: xmldb_field::setDefault() rejects '' on a CHAR NOT NULL column - it wants a
+        // meaningful default or none - and silently rewrites it to null anyway. The column is still
+        // NOT NULL; the persistent supplies '' for new records.
+        $field = new xmldb_field('templatename', XMLDB_TYPE_CHAR, '255', null, XMLDB_NOTNULL, null, null, 'category');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('templatesummary', XMLDB_TYPE_TEXT, null, null, null, null, null, 'templatename');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Existing rows carry neither, and nothing recomputes them until the template course is
+        // rescanned - so ask for that rescan rather than leaving every preset looking like a
+        // non-member until the nightly reconcile happens to run.
+        \mod_edpreset\local\baker::queue_rebuild();
+
+        upgrade_mod_savepoint(true, 2026081300, 'edpreset');
+    }
+
     return true;
 }

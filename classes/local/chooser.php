@@ -72,6 +72,11 @@ class chooser {
 
         $items = [];
         foreach (self::get_live_presets() as $preset) {
+            // A section template is offered as a set or not at all, so its members never appear
+            // here - not even the ones that happen to sit in the priority section.
+            if ($preset->is_template_member()) {
+                continue;
+            }
             if ((int)$preset->get('sectionnum') !== template::priority_section()) {
                 continue;
             }
@@ -192,6 +197,13 @@ class chooser {
 
         $items = [];
         foreach (self::get_live_presets() as $preset) {
+            // Kept out for the same reason as get_content_items(): a member is never offered on its
+            // own, so it can never carry a star, and it must not be recommendable by itself either.
+            // Excluding it from both lists together preserves the superset relationship this list
+            // has to depend on.
+            if ($preset->is_template_member()) {
+                continue;
+            }
             $items[] = self::make_content_item($preset, null);
         }
         return $items;
@@ -216,15 +228,38 @@ class chooser {
         );
 
         $live = [];
+        $cards = 0;
+        $templates = [];
+
         foreach ($candidates as $preset) {
             if (!$preset->is_live()) {
                 continue;
             }
-            $live[] = $preset;
-            if (count($live) >= $max) {
-                break;
+
+            // The maxpresets setting caps how many cards a chooser may render, and a whole section
+            // template is one card however many activities it holds. So the cap counts templates
+            // rather than their members - counting members would let it truncate a template mid-way
+            // and ship a set that silently drops activities.
+            if ($preset->is_template_member()) {
+                $sectionnum = (int)$preset->get('sectionnum');
+                if (!isset($templates[$sectionnum])) {
+                    if ($cards >= $max) {
+                        continue;
+                    }
+                    $templates[$sectionnum] = true;
+                    $cards++;
+                }
+                $live[] = $preset;
+                continue;
             }
+
+            if ($cards >= $max) {
+                continue;
+            }
+            $live[] = $preset;
+            $cards++;
         }
+
         return $live;
     }
 
