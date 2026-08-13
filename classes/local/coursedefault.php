@@ -119,7 +119,7 @@ class coursedefault {
      * @return bool
      */
     public static function allows_for_record(string $recorded, string $templatename): bool {
-        if (!self::setting_enabled('preventmixing')) {
+        if (self::mixing_allowed()) {
             return true;
         }
 
@@ -129,6 +129,15 @@ class coursedefault {
 
         // Something else is recorded. Whether that still counts is the second setting's business.
         return self::setting_enabled('ignoreinvalidtemplate') && !section_template::name_exists($recorded);
+    }
+
+    /**
+     * Whether the site is allowing a course to use more than one section template.
+     *
+     * @return bool
+     */
+    public static function mixing_allowed(): bool {
+        return !self::setting_enabled('preventmixing');
     }
 
     /**

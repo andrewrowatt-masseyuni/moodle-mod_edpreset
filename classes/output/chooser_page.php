@@ -311,6 +311,9 @@ class chooser_page implements renderable, templatable {
         // both. The record is passed in because the page weighs several templates against the same
         // one.
         $card->locked = !coursedefault::allows_for_record($usedtemplate, $template->get_name());
+        $card->recommended = !$card->locked
+            && $usedtemplate !== ''
+            && $usedtemplate === $template->get_name();
         $card->count = $template->count_members();
         $card->addurl = $this->template_add_url($template->get_sectionnum())->out(false);
         $card->tags = array_map(fn($tag) => (object)['name' => $tag], $tags);

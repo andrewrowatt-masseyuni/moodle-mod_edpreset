@@ -477,6 +477,14 @@
     cursor: default;
 }
 
+.edpreset-chooser .edpreset-template-recommended {
+    flex-shrink: 0;
+    background-color: rgba(0, 75, 141, 0.10);
+    border-color: rgba(0, 75, 141, 0.30);
+    color: var(--edpreset-accent);
+    cursor: default;
+}
+
 .edpreset-chooser .edpreset-template-card .edpreset-card-description {
     max-height: unset;
 }
