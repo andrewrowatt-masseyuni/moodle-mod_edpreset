@@ -515,23 +515,34 @@ class activity_copier {
      * @return int|null The note's course module id, or null if no note was added.
      */
     protected static function emit_note(preset $preset, stdClass $course, int $sectionnum, int $activitycmid): ?int {
-        global $CFG;
+        global $CFG, $DB;
 
         $guidance = trim((string)$preset->get('teacherguidance'));
         if ($guidance === '') {
             return null;
         }
 
-        // One call covering three things: mod_ednote is installed, it is enabled, and this user is
-        // allowed to add one here. Mirrors how access.php gates copying itself.
-        if (!course_allowed_module($course, 'ednote')) {
+        // Whether mod_ednote is here at all, and switched on. This cannot be left to
+        // course_allowed_module() below, which does the opposite of what its name suggests for a
+        // module that is not installed: with no mod/ednote:addinstance capability to check it
+        // returns true - "if the capability does not exist, the module can always be added" - and
+        // create_module() then throws dml_missing_record_exception looking the module row up with
+        // MUST_EXIST. Since a preset's guidance is optional chrome, that would turn every copy of a
+        // preset carrying guidance into a failed copy on any site without mod_ednote, which is
+        // precisely the arrangement this plugin promises to support.
+        if (!$DB->record_exists('modules', ['name' => self::NOTE_MODNAME, 'visible' => 1])) {
+            return null;
+        }
+
+        // Whether this user may add one here.
+        if (!course_allowed_module($course, self::NOTE_MODNAME)) {
             return null;
         }
 
         require_once($CFG->dirroot . '/course/modlib.php');
 
         $note = (object)[
-            'modulename' => 'ednote',
+            'modulename' => self::NOTE_MODNAME,
             'course' => $course->id,
             'section' => $sectionnum,
             'visible' => 1,

@@ -618,8 +618,13 @@ final class activity_copier_test extends \advanced_testcase {
     /**
      * Without mod_ednote the copy still works; it just arrives without its note.
      *
-     * This is what lets mod_edpreset declare no dependency on mod_ednote. Simulated by taking the
-     * module out of the modules table, which is what course_allowed_module() consults.
+     * This is what lets mod_edpreset declare no dependency on mod_ednote. Deliberately NOT skipped
+     * when mod_ednote is absent - that is the case it is about, and on a site without the plugin it
+     * stops being a simulation and becomes the real thing.
+     *
+     * Hiding the module rather than deleting its row keeps the test honest on a site that does have
+     * mod_ednote: emit_note() has to decline for a module that is installed but switched off as well
+     * as for one that was never installed, and both go through the same guard.
      */
     public function test_copy_still_works_when_ednote_is_unavailable(): void {
         global $DB;

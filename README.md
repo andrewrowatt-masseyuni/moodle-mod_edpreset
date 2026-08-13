@@ -372,10 +372,18 @@ After `execute_plan()` the copier:
   completion, competencies and third-party observers never learn the activity exists;
 * renames the activity to the preset's default name *before* reading modinfo, since
   `set_coursemodule_name()` purges and rebuilds the course cache;
-* emits a `mod_ednote` teacher note above the activity when the preset has guidance and
-  `course_allowed_module()` permits it. The note carries the *preset id*, so later edits in the
-  template course reach every course that already added it, with the guidance text stored as a
-  fallback.
+* emits a `mod_ednote` teacher note above the activity when the preset has guidance, that module is
+  installed and enabled, and the user may add one here. The note carries the *preset id*, so later
+  edits in the template course reach every course that already added it, with the guidance text
+  stored as a fallback.
+
+  The installed-and-enabled part is checked directly against the `modules` table, and must not be
+  left to `course_allowed_module()`: for a module that is not installed there is no
+  `mod/ednote:addinstance` capability to test, and that function's response to a missing capability
+  is to **return true** — "if the capability does not exist, the module can always be added". The
+  `create_module()` call after it then throws looking the module row up with `MUST_EXIST`, which
+  would turn every copy of a guidance-carrying preset into a failed copy on exactly the sites this
+  plugin promises to support.
 
 `copy_many()` copies a batch sequentially. Nothing wraps a restore in a transaction — core does not
 either — so a preset that fails does not take the rest down with it; the caller gets both an `added`
