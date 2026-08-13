@@ -43,6 +43,7 @@ $string['chooser:expandsection'] = 'Expand {$a}';
 $string['chooser:favourite'] = 'Star {$a}';
 $string['chooser:filterbytag'] = 'Filter by {$a}';
 $string['chooser:lastused'] = 'You last used this template in the course.';
+$string['chooser:lastusedrecommended'] = 'Recommended because you last used this template in the course.';
 $string['chooser:nopresets'] = 'There are no preset activities to show yet.';
 $string['chooser:noresults'] = 'No preset activities match your filters.';
 $string['chooser:nosectiontemplates'] = 'There are no section templates to show yet.';
