@@ -73,10 +73,13 @@ final class baker_test extends \advanced_testcase {
             ]);
             $plugingenerator->create_metadata((int)$module->cmid, [
                 'presetname' => $name,
-                'description' => "Use *$name* when you want to.",
+                // HTML, as the rich text editor on the settings form writes it.
+                'description' => "<p>Use <em>$name</em> when you want to.</p>",
                 // Only one exemplar carries guidance, so the tests can tell the rendered and the
                 // absent cases apart.
-                'teacherguidance' => $name === 'Reflective journal' ? 'Set the **due date** first.' : '',
+                'teacherguidance' => $name === 'Reflective journal'
+                    ? '<p>Set the <strong>due date</strong> first.</p>'
+                    : '',
                 'tags' => $tags,
             ]);
         }
@@ -210,9 +213,68 @@ final class baker_test extends \advanced_testcase {
         $journal = preset::get_record(['title' => 'Reflective journal']);
 
         $this->assertSame('Assessment, Reflection', $journal->get('tags'));
-        // Markdown is rendered at bake time, not at display time.
+        // The curator's rich text reaches the preset as the markup they wrote.
         $this->assertStringContainsString('<em>Reflective journal</em>', $journal->get('description'));
-        $this->assertStringNotContainsString('*Reflective journal*', $journal->get('description'));
+    }
+
+    /**
+     * The description is cleaned at bake time, not at display time.
+     *
+     * This is the whole reason the rendering happens here rather than in the chooser: the field is
+     * PARAM_RAW on the settings form, and every card and info panel emits it unescaped. If cleaning
+     * ever moved or was dropped, a curator's script tag would reach every teacher on the site.
+     */
+    public function test_description_is_cleaned_at_bake_time(): void {
+        $this->resetAfterTest();
+        $course = $this->make_template_course();
+
+        $module = $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id, 'section' => 1, 'name' => 'Risky page',
+        ]);
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata((int)$module->cmid, [
+            'presetname' => 'Risky page',
+            'description' => '<p>Safe enough.</p><script>alert(1)</script>',
+            'teacherguidance' => '<p>Also safe.</p><script>alert(2)</script>',
+        ]);
+
+        baker::rebuild();
+
+        $risky = preset::get_record(['title' => 'Risky page']);
+        $this->assertStringContainsString('Safe enough.', $risky->get('description'));
+        $this->assertStringNotContainsString('<script>', $risky->get('description'));
+        $this->assertStringNotContainsString('<script>', $risky->get('teacherguidance'));
+        // The chooser's info panel is built from the description, so it is cleaned by the same pass.
+        $this->assertStringNotContainsString('<script>', $risky->get('help'));
+    }
+
+    /**
+     * The stored format decides how the text is rendered, rather than HTML being assumed.
+     *
+     * A site running the plain textarea editor is still offered the whole format menu, so the
+     * format column has to be honoured. Assuming HTML would show a teacher the raw syntax.
+     */
+    public function test_the_stored_format_is_what_the_text_is_rendered_with(): void {
+        $this->resetAfterTest();
+        $course = $this->make_template_course();
+
+        $module = $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id, 'section' => 1, 'name' => 'Legacy page',
+        ]);
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata((int)$module->cmid, [
+            'presetname' => 'Legacy page',
+            'description' => 'Use *this* when you want to.',
+            'descriptionformat' => FORMAT_MARKDOWN,
+            'teacherguidance' => 'Set the **due date** first.',
+            'teacherguidanceformat' => FORMAT_MARKDOWN,
+        ]);
+
+        baker::rebuild();
+
+        $legacy = preset::get_record(['title' => 'Legacy page']);
+        $this->assertStringContainsString('<em>this</em>', $legacy->get('description'));
+        $this->assertStringNotContainsString('*this*', $legacy->get('description'));
+        $this->assertStringContainsString('<strong>due date</strong>', $legacy->get('teacherguidance'));
+        $this->assertStringNotContainsString('**due date**', $legacy->get('teacherguidance'));
     }
 
     /**
@@ -221,19 +283,31 @@ final class baker_test extends \advanced_testcase {
      *
      * mod_ednote and emit_note() both treat "has guidance" as a simple emptiness test, so an
      * empty string that format_text() had wrapped in <p></p> would make every preset emit a note.
+     * The rich text editor makes the second case here the likely one: an editor that has been typed
+     * into and emptied again submits "<p></p>", not "".
      */
     public function test_guidance_is_rendered_and_stays_empty_when_unset(): void {
         $this->resetAfterTest();
-        $this->make_template_course();
+        $course = $this->make_template_course();
+
+        $module = $this->getDataGenerator()->create_module('page', [
+            'course' => $course->id, 'section' => 1, 'name' => 'Emptied page',
+        ]);
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata((int)$module->cmid, [
+            'presetname' => 'Emptied page',
+            'teacherguidance' => '<p><br></p>',
+        ]);
 
         baker::rebuild();
 
         $journal = preset::get_record(['title' => 'Reflective journal']);
         $this->assertStringContainsString('<strong>due date</strong>', $journal->get('teacherguidance'));
-        $this->assertStringNotContainsString('**due date**', $journal->get('teacherguidance'));
 
         $discussion = preset::get_record(['title' => 'Discussion starter']);
         $this->assertSame('', $discussion->get('teacherguidance'));
+
+        $emptied = preset::get_record(['title' => 'Emptied page']);
+        $this->assertSame('', $emptied->get('teacherguidance'));
     }
 
     /**

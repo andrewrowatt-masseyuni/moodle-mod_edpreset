@@ -56,12 +56,20 @@ class meta extends persistent {
         return [
             'cmid' => ['type' => PARAM_INT],
             'presetname' => ['type' => PARAM_TEXT],
-            // Raw markdown as the curator typed it. PARAM_TEXT would mangle the syntax, so the
-            // cleaning happens once, at bake time, via format_text(..., ['noclean' => false]).
+            // Raw HTML as the curator typed it in the rich text editor. PARAM_RAW because the
+            // cleaning happens once, at bake time, via format_text(..., ['noclean' => false]) -
+            // the point at which the text leaves the template course.
             'description' => ['type' => PARAM_RAW],
-            // Also raw markdown, cleaned at bake time for the same reason. Optional, unlike
-            // description: a preset with nothing useful to tell the teacher emits no note at all.
+            // The format the description was typed in, which is what the baker renders it with.
+            // FORMAT_HTML from the rich text editor, but not assumed to be: a site running the
+            // plain textarea editor is still offered the whole format menu.
+            'descriptionformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
+            // Raw HTML too, cleaned at bake time for the same reason. Optional, unlike description:
+            // a preset with nothing useful to tell the teacher emits no note at all. Stored as ''
+            // rather than the empty paragraph the editor leaves behind, because "has guidance" is a
+            // plain emptiness test everywhere downstream.
             'teacherguidance' => ['type' => PARAM_RAW, 'default' => ''],
+            'teacherguidanceformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
         ];

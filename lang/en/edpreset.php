@@ -111,7 +111,7 @@ $string['presetdefaultname'] = 'Default activity name';
 $string['presetdefaultname_help'] = 'The name given to the activity when a teacher adds this preset to their course. Leave blank to keep this exemplar\'s own name.';
 $string['presetdefaultnametoolong'] = 'The default activity name must be {$a} characters or fewer.';
 $string['presetdescription'] = 'Preset description';
-$string['presetdescription_help'] = 'A teacher-facing explanation of what this preset is and when to use it. Plain text; Markdown formatting is allowed.';
+$string['presetdescription_help'] = 'A teacher-facing explanation of what this preset is and when to use it. Keep the formatting light - it is shown in a preset card, not on a page of its own.';
 $string['presetdetails'] = 'Preset details';
 $string['presetdetails_desc'] = 'These are used to help guide the teacher.';
 $string['presetdetails_help'] = 'These are used to help guide the teacher.
@@ -123,7 +123,7 @@ $string['presetnametoolong'] = 'The preset name must be {$a} characters or fewer
 $string['presettags'] = 'Preset tags';
 $string['presettags_help'] = 'A comma-separated list of words or short phrases, for example: Assessment, Engage with content, Content packages. Teachers can filter the preset list by these.';
 $string['presetteacherguidance'] = 'Teacher guidance';
-$string['presetteacherguidance_help'] = 'Optional guidance and next steps for the teacher who adds this preset, for example what to set before releasing it to students. Markdown formatting is allowed.
+$string['presetteacherguidance_help'] = 'Optional guidance and next steps for the teacher who adds this preset, for example what to set before releasing it to students.
 
 Students never see this. It is shown on the preset list before the preset is added, and added to the course as a teacher-only note above the activity. Editing it here updates every note already in a course.';
 $string['privacy:metadata:favourites'] = 'Preset activities a user has starred on the preset activities page.';
