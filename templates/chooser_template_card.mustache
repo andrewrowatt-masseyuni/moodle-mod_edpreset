@@ -37,6 +37,7 @@
     * hasmultipletypes bool - the set spans more than one activity type, so the icon is drawn stacked
     * locked bool - a different template has already been used in this course, so this one cannot be
       chosen: the card is greyed out, its button disabled, and a note explaining why sits below it
+    * recommended bool - this course's saved default matches this template, so it is suggested
     * modfullname string - the distinct activity types, e.g. "Book, Page, Quiz"
     * count int - how many activities the template adds
     * addurl string - a copy.php link carrying the template
@@ -81,6 +82,11 @@
     <div class="card-body d-flex flex-column">
         <div class="d-flex align-items-center mb-2">
             <h3 class="h6 mb-0 flex-grow-1 edpreset-card-title">{{title}}</h3>
+            {{#recommended}}
+                <span class="edpreset-tag edpreset-template-recommended ms-2">
+                    {{#str}} chooser:recommended, mod_edpreset {{/str}}
+                </span>
+            {{/recommended}}
             <span class="edpreset-tag edpreset-template-count ms-2">
                 {{#str}} chooser:templatecount, mod_edpreset, {{count}} {{/str}}
             </span>
@@ -132,4 +138,7 @@
 {{#locked}}
     <div class="edpreset-card-note">{{#str}} templatelocked, mod_edpreset {{/str}}</div>
 {{/locked}}
+{{#recommended}}
+    <div class="edpreset-card-note">{{#str}} chooser:lastused, mod_edpreset {{/str}}</div>
+{{/recommended}}
 </div>
