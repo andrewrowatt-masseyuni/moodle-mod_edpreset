@@ -40,6 +40,24 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
+     * Skip the calling test unless mod_ednote is installed.
+     *
+     * mod_edpreset deliberately declares no dependency on mod_ednote: a preset's guidance becomes a
+     * teacher note if that plugin happens to be there, and is simply not shown if it is not. So the
+     * plugin is routinely run - including by its own CI, which checks out this repository alone -
+     * on a site where mod_ednote does not exist, and the tests that assert a note was created have
+     * nothing to assert about.
+     *
+     * Only those tests skip. The ones asserting that no note appears are still worth running: that
+     * is the behaviour a site without mod_ednote actually gets.
+     */
+    protected function skip_without_ednote(): void {
+        if (!\core_component::get_component_directory('mod_ednote')) {
+            $this->markTestSkipped('mod_ednote is not installed, so a preset\'s guidance produces no note.');
+        }
+    }
+
+    /**
      * Create a template course with one exemplar, and bake it into a live preset.
      *
      * @param string $modname The module to use as the exemplar.
@@ -509,6 +527,7 @@ final class activity_copier_test extends \advanced_testcase {
      * A preset with guidance drops a teacher note in above the activity.
      */
     public function test_guidance_emits_a_note_above_the_activity(): void {
+        $this->skip_without_ednote();
         $this->resetAfterTest();
         [, $preset] = $this->bake_exemplar();
 
@@ -541,6 +560,7 @@ final class activity_copier_test extends \advanced_testcase {
      * The note is a normal visible activity, hidden from students by capability instead.
      */
     public function test_the_emitted_note_is_not_a_hidden_activity(): void {
+        $this->skip_without_ednote();
         $this->resetAfterTest();
         [, $preset] = $this->bake_exemplar();
 

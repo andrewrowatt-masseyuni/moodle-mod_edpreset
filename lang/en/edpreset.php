@@ -67,6 +67,7 @@ $string['creatingtemplate'] = 'Adding {$a}';
 $string['customfield:category'] = 'Activity preset provider';
 $string['customfield:defaultsectiontemplate'] = 'Default section template';
 $string['customfield:defaultsectiontemplate_desc'] = 'This field is used by the Activity preset provider (mod_edpreset). Current default section template for this course. It will be blank if no section template has been applied. Administrators can clear the contents if a new or different template will be the default. It is not recommended to set the value directly.';
+$string['edpreset:addinstance'] = 'Add a new Preset';
 $string['invalidpreset'] = 'That preset activity is not available. It may have been removed, or its backup may be in the process of being rebuilt.';
 $string['locktimeout'] = 'Another preset activity backup is in progress.';
 $string['manage:actionsqueued'] = 'These run in the background, so nothing here happens instantly.';
