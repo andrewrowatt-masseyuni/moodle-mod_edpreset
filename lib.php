@@ -166,6 +166,48 @@ function edpreset_get_form_fieldmap(): array {
 }
 
 /**
+ * The options the curator's two rich text fields are created with.
+ *
+ * maxfiles is 0, which is also the element's own default, but it is stated because it is
+ * load-bearing rather than incidental: this plugin implements no pluginfile callback by design, so
+ * there is no URL that could ever serve a file embedded here, and the text is read by every teacher
+ * on the site rather than only by whoever can reach the template course. Curators who want a picture
+ * should link to one that is already served somewhere.
+ *
+ * @param int $courseid The template course the form is being built in.
+ * @return array
+ */
+function edpreset_get_editor_options(int $courseid): array {
+    return [
+        'maxfiles' => 0,
+        // The course rather than the module: the same options are used for an activity that does
+        // not exist yet, which has no context of its own.
+        'context' => \context_course::instance($courseid),
+    ];
+}
+
+/**
+ * Unpack the value of one of the rich text fields.
+ *
+ * An editor element submits text, format and itemid as an array, but these callbacks are also
+ * reached with a plain string - a web service call, a restore, or a caller assembling the module
+ * info by hand - so both shapes have to be understood. A string is taken to be HTML, which is what
+ * the editor produces.
+ *
+ * @param mixed $value The submitted value, either an editor array or a plain string.
+ * @return array{0: string, 1: int} The text, and the format to render it with.
+ */
+function edpreset_unpack_editor($value): array {
+    if (is_array($value)) {
+        return [(string)($value['text'] ?? ''), (int)($value['format'] ?? FORMAT_HTML)];
+    }
+
+    // Cast because core defines the FORMAT_* constants as strings, and the caller stores this in a
+    // PARAM_INT property.
+    return [(string)$value, (int)FORMAT_HTML];
+}
+
+/**
  * Whether an activity's settings form should ask for preset details.
  *
  * @param moodleform_mod $formwrapper The form wrapper.
@@ -216,6 +258,9 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         return;
     }
 
+    // Note that get_course() returns the course record, whatever core's phpdoc on it says.
+    $editoroptions = edpreset_get_editor_options((int)$formwrapper->get_course()->id);
+
     $elements = [
         'edpreset_detailsheading' => $mform->createElement(
             'static',
@@ -234,24 +279,26 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             ['maxlength' => \mod_edpreset\meta::PRESETNAME_MAXLENGTH, 'size' => 60]
         ),
         'edpreset_description' => $mform->createElement(
-            'textarea',
+            'editor',
             'edpreset_description',
             get_string('presetdescription', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetdescription_help', 'mod_edpreset'),
                 'edpreset-field-desc d-block small text-muted fw-normal'
             ),
-            ['rows' => 5, 'cols' => 60]
+            ['rows' => 5],
+            $editoroptions
         ),
         'edpreset_teacherguidance' => $mform->createElement(
-            'textarea',
+            'editor',
             'edpreset_teacherguidance',
             get_string('presetteacherguidance', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetteacherguidance_help', 'mod_edpreset'),
                 'edpreset-field-desc d-block small text-muted fw-normal'
             ),
-            ['rows' => 8, 'cols' => 60]
+            ['rows' => 8],
+            $editoroptions
         ),
         'edpreset_tags' => $mform->createElement(
             'text',
@@ -310,17 +357,23 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     }
 
     $mform->setType('edpreset_presetname', PARAM_TEXT);
-    // PARAM_RAW because the field is markdown: PARAM_TEXT strips the tags and decodes the entities
-    // that markdown may legitimately contain. It is cleaned once, at bake time, by
+    // PARAM_RAW because the field is the rich text editor's HTML: anything narrower strips the
+    // markup the curator just wrote. It is cleaned once, at bake time, by
     // format_text(..., ['noclean' => false]) - the same point at which it becomes visible to
-    // anyone outside this course.
+    // anyone outside this course. The element registers the types of its own [format] and [itemid]
+    // keys when it is created, so only [text] is left to declare, and setType() on the element name
+    // is how core does that for every other editor on the site.
     $mform->setType('edpreset_description', PARAM_RAW);
-    // Markdown too, and cleaned at the same point, for the same reason.
+    // The editor's HTML too, and cleaned at the same point, for the same reason.
     $mform->setType('edpreset_teacherguidance', PARAM_RAW);
     $mform->setType('edpreset_tags', PARAM_TEXT);
     $mform->setType('edpreset_defaultname', PARAM_TEXT);
 
     $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
+    // MoodleQuickForm_Rule_Required understands an editor's array value, and formslib appends
+    // [text] when it builds the client-side check, so this needs no special handling here. What it
+    // will not catch on a site with $CFG->strictformsrequired off is the empty paragraph an editor
+    // leaves behind - mod_edpreset_coursemodule_validation() is what rejects that.
     $mform->addRule('edpreset_description', get_string('required'), 'required', null, 'client');
 
     // Loaded here rather than in data_preprocessing(), which a plugin callback cannot reach.
@@ -330,8 +383,16 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     $meta = $cmid ? \mod_edpreset\meta::get_for_cm($cmid) : null;
     if ($meta) {
         $mform->setDefault('edpreset_presetname', $meta->get('presetname'));
-        $mform->setDefault('edpreset_description', $meta->get('description'));
-        $mform->setDefault('edpreset_teacherguidance', $meta->get('teacherguidance'));
+        // An editor takes its value as an array. No itemid: maxfiles is 0, so there is no draft
+        // area to point at.
+        $mform->setDefault('edpreset_description', [
+            'text' => $meta->get('description'),
+            'format' => (int)$meta->get('descriptionformat'),
+        ]);
+        $mform->setDefault('edpreset_teacherguidance', [
+            'text' => $meta->get('teacherguidance'),
+            'format' => (int)$meta->get('teacherguidanceformat'),
+        ]);
         $mform->setDefault('edpreset_tags', $meta->get('tags'));
         $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
     }
@@ -366,7 +427,12 @@ function mod_edpreset_coursemodule_validation($formwrapper, $data) {
         );
     }
 
-    if (trim((string)($data['edpreset_description'] ?? '')) === '') {
+    // Blankness is html_is_blank() rather than trim(): an editor the curator typed into and then
+    // emptied submits "<p></p>" or "<p><br></p>", neither of which is an empty string and both of
+    // which would otherwise pass as a description. It keeps img and the other tags that are content
+    // in themselves, so a description that is only a picture still counts as filled in.
+    [$description] = edpreset_unpack_editor($data['edpreset_description'] ?? '');
+    if (html_is_blank($description)) {
         $errors['edpreset_description'] = get_string('required');
     }
 
@@ -405,10 +471,18 @@ function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
     $cmid = (int)$moduleinfo->coursemodule;
     $meta = \mod_edpreset\meta::get_for_cm($cmid) ?? new \mod_edpreset\meta();
 
+    [$description, $descriptionformat] = edpreset_unpack_editor($moduleinfo->edpreset_description ?? '');
+    [$guidance, $guidanceformat] = edpreset_unpack_editor($moduleinfo->edpreset_teacherguidance ?? '');
+
     $meta->set('cmid', $cmid);
     $meta->set('presetname', trim((string)$moduleinfo->edpreset_presetname));
-    $meta->set('description', trim((string)($moduleinfo->edpreset_description ?? '')));
-    $meta->set('teacherguidance', trim((string)($moduleinfo->edpreset_teacherguidance ?? '')));
+    $meta->set('description', trim($description));
+    $meta->set('descriptionformat', $descriptionformat);
+    // Normalised to '' here rather than stored as the "<p></p>" an emptied editor submits, because
+    // "has guidance" is a plain emptiness test in the baker, in the copier's emit_note() and in
+    // mod_ednote. An empty paragraph would make every preset emit an empty teacher note.
+    $meta->set('teacherguidance', html_is_blank($guidance) ? '' : trim($guidance));
+    $meta->set('teacherguidanceformat', $guidanceformat);
     $meta->set('tags', \mod_edpreset\meta::normalise_tags((string)($moduleinfo->edpreset_tags ?? '')));
     $meta->set('defaultname', trim((string)($moduleinfo->edpreset_defaultname ?? '')));
 

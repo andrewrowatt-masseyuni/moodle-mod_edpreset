@@ -249,6 +249,27 @@ final class form_elements_test extends \advanced_testcase {
     }
 
     /**
+     * The description and the guidance are the standard rich text editor.
+     *
+     * They were a plain textarea taking markdown until the fields were converted, so this pins what
+     * the curator actually gets. maxfiles is asserted alongside the type because the two go
+     * together: the plugin implements no pluginfile callback by design, so an editor here that
+     * accepted an upload would embed a file that nothing could ever serve.
+     */
+    public function test_the_rich_text_fields_are_editors(): void {
+        $course = $this->setup_template_course();
+
+        $mform = $this->build_form($course, 'page', 1);
+
+        foreach (['edpreset_description', 'edpreset_teacherguidance'] as $name) {
+            $element = $mform->getElement($name);
+
+            $this->assertSame('editor', $element->getType(), "$name must be the standard rich text editor");
+            $this->assertSame(0, $element->getMaxfiles(), "$name must not accept file uploads");
+        }
+    }
+
+    /**
      * Existing details are loaded back into the form.
      */
     public function test_existing_details_are_loaded_as_defaults(): void {
@@ -263,8 +284,8 @@ final class form_elements_test extends \advanced_testcase {
         $course = $plugingenerator->create_template_course([
             1 => [['modname' => 'page', 'name' => 'Exemplar page', 'meta' => [
                 'presetname' => 'Weekly reading',
-                'description' => 'Use this for a **weekly** reading.',
-                'teacherguidance' => 'Set the **due date** before releasing.',
+                'description' => '<p>Use this for a <strong>weekly</strong> reading.</p>',
+                'teacherguidance' => '<p>Set the <strong>due date</strong> before releasing.</p>',
                 'tags' => 'Content, Engage with content',
                 'defaultname' => 'This week\'s reading',
             ]]],
@@ -280,13 +301,65 @@ final class form_elements_test extends \advanced_testcase {
         $mform = (new ReflectionClass(\mod_page_mod_form::class))->getProperty('_form')->getValue($form);
 
         $this->assertSame('Weekly reading', $mform->getElement('edpreset_presetname')->getValue());
-        $this->assertSame('Use this for a **weekly** reading.', $mform->getElement('edpreset_description')->getValue());
-        $this->assertSame(
-            'Set the **due date** before releasing.',
-            $mform->getElement('edpreset_teacherguidance')->getValue()
-        );
+
+        // An editor takes and returns its value as an array, and the stored format has to come back
+        // with the text: it is what decides which editor the curator is given.
+        $description = $mform->getElement('edpreset_description')->getValue();
+        $this->assertSame('<p>Use this for a <strong>weekly</strong> reading.</p>', $description['text']);
+        $this->assertSame((int)FORMAT_HTML, (int)$description['format']);
+
+        $guidance = $mform->getElement('edpreset_teacherguidance')->getValue();
+        $this->assertSame('<p>Set the <strong>due date</strong> before releasing.</p>', $guidance['text']);
+        $this->assertSame((int)FORMAT_HTML, (int)$guidance['format']);
+
         $this->assertSame('Content, Engage with content', $mform->getElement('edpreset_tags')->getValue());
         $this->assertSame("This week's reading", $mform->getElement('edpreset_defaultname')->getValue());
+    }
+
+    /**
+     * A stored format that is not HTML is handed back to the form as it was stored.
+     *
+     * A site running the plain textarea editor is still offered the whole format menu, so not every
+     * row is HTML. Defaulting the format to HTML on the way into the form would silently relabel
+     * that text, and the next save would store the relabelled version.
+     */
+    public function test_a_non_html_format_survives_a_round_trip_through_the_form(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/mod/page/mod_form.php');
+
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $course = $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_template_course([
+            1 => [['modname' => 'page', 'name' => 'Exemplar page', 'meta' => [
+                'presetname' => 'Weekly reading',
+                'description' => 'Use this for a *weekly* reading.',
+                'descriptionformat' => FORMAT_MARKDOWN,
+            ]]],
+        ]);
+
+        $cm = get_fast_modinfo($course)->get_cms();
+        $cm = reset($cm);
+
+        $this->set_current_course($course);
+
+        [$cmrec, , , $data] = get_moduleinfo_data($cm, $course);
+        $form = new \mod_page_mod_form($data, $cm->sectionnum, $cmrec, $course);
+        $mform = (new ReflectionClass(\mod_page_mod_form::class))->getProperty('_form')->getValue($form);
+
+        $description = $mform->getElement('edpreset_description')->getValue();
+        $this->assertSame('Use this for a *weekly* reading.', $description['text']);
+        $this->assertSame((int)FORMAT_MARKDOWN, (int)$description['format']);
+    }
+
+    /**
+     * An editor element's submitted value, as the form hands it to validation and post actions.
+     *
+     * @param string $text The HTML in the editor.
+     * @return array
+     */
+    private static function editor(string $text): array {
+        return ['text' => $text, 'format' => FORMAT_HTML, 'itemid' => 0];
     }
 
     /**
@@ -302,7 +375,7 @@ final class form_elements_test extends \advanced_testcase {
 
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => '  ',
-            'edpreset_description' => '',
+            'edpreset_description' => self::editor(''),
             'edpreset_defaultname' => '',
         ]);
         $this->assertArrayHasKey('edpreset_presetname', $errors);
@@ -310,7 +383,7 @@ final class form_elements_test extends \advanced_testcase {
 
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => str_repeat('a', meta::PRESETNAME_MAXLENGTH + 1),
-            'edpreset_description' => 'Fine.',
+            'edpreset_description' => self::editor('<p>Fine.</p>'),
             'edpreset_defaultname' => str_repeat('b', meta::DEFAULTNAME_MAXLENGTH + 1),
         ]);
         $this->assertArrayHasKey('edpreset_presetname', $errors);
@@ -320,18 +393,69 @@ final class form_elements_test extends \advanced_testcase {
         // Guidance is optional, so an otherwise complete form with none of it must still pass.
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => 'Weekly reading',
-            'edpreset_description' => 'Use this for a weekly reading.',
-            'edpreset_teacherguidance' => '',
+            'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
+            'edpreset_teacherguidance' => self::editor(''),
             'edpreset_defaultname' => '',
         ]);
         $this->assertSame([], $errors);
 
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => 'Weekly reading',
-            'edpreset_description' => 'Use this for a weekly reading.',
+            'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
             'edpreset_defaultname' => '',
         ]);
         $this->assertSame([], $errors);
+    }
+
+    /**
+     * Descriptions that only look filled in, and one that only looks empty.
+     *
+     * A rich text editor typed into and then emptied again submits markup rather than an empty
+     * string, which the 'required' rule accepts on a site with $CFG->strictformsrequired off. This
+     * server-side check is the one that has to reject it. The picture case is the other side of the
+     * same coin: a description made entirely of an image carries no text at all and must still count
+     * as filled in.
+     *
+     * @dataProvider blank_description_provider
+     * @param string $description The submitted description HTML.
+     * @param bool $expected Whether it should be rejected as blank.
+     */
+    public function test_validation_rejects_a_visually_empty_description(string $description, bool $expected): void {
+        $course = $this->setup_template_course();
+
+        $this->set_current_course($course);
+
+        [, , , $cm, $data] = prepare_new_moduleinfo_data($course, 'page', 1);
+        $form = new \mod_page_mod_form($data, 1, $cm, $course);
+
+        $errors = mod_edpreset_coursemodule_validation($form, [
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => self::editor($description),
+            'edpreset_defaultname' => '',
+        ]);
+
+        $this->assertSame($expected, array_key_exists('edpreset_description', $errors));
+    }
+
+    /**
+     * Descriptions that should and should not be rejected as blank.
+     *
+     * The non-breaking space case is core's behaviour rather than a preference: html_is_blank()
+     * strips tags and trims, and a literal &nbsp; entity survives both, so it counts as content.
+     * It is pinned here so the boundary is visible rather than discovered.
+     *
+     * @return array[]
+     */
+    public static function blank_description_provider(): array {
+        return [
+            'empty' => ['', true],
+            'empty paragraph' => ['<p></p>', true],
+            'paragraph holding only a line break' => ['<p><br></p>', true],
+            'whitespace' => ["  \n  ", true],
+            'non-breaking space, which core counts as content' => ['<p>&nbsp;</p>', false],
+            'real text' => ['<p>Use this for a weekly reading.</p>', false],
+            'only a picture' => ['<img src="https://example.com/diagram.png" alt="A diagram">', false],
+        ];
     }
 
     /**
@@ -363,8 +487,8 @@ final class form_elements_test extends \advanced_testcase {
             'coursemodule' => $page->cmid,
             'modulename' => 'page',
             'edpreset_presetname' => 'Weekly reading',
-            'edpreset_description' => 'Use this for a weekly reading.',
-            'edpreset_teacherguidance' => '  Set the due date before releasing.  ',
+            'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
+            'edpreset_teacherguidance' => self::editor('  <p>Set the due date before releasing.</p>  '),
             // Duplicates differing only in case collapse to the first spelling seen.
             'edpreset_tags' => ' Content ,, engage with content, CONTENT ',
             'edpreset_defaultname' => 'This week\'s reading',
@@ -376,14 +500,110 @@ final class form_elements_test extends \advanced_testcase {
         $stored = meta::get_for_cm((int)$page->cmid);
         $this->assertNotNull($stored);
         $this->assertSame('Weekly reading', $stored->get('presetname'));
-        $this->assertSame('Set the due date before releasing.', $stored->get('teacherguidance'));
+        $this->assertSame('<p>Use this for a weekly reading.</p>', $stored->get('description'));
+        $this->assertSame('<p>Set the due date before releasing.</p>', $stored->get('teacherguidance'));
         $this->assertSame('Content, engage with content', $stored->get('tags'));
+
+        // The format has to be stored alongside the text: it is what the baker renders with.
+        $this->assertSame((int)FORMAT_HTML, (int)$stored->get('descriptionformat'));
+        $this->assertSame((int)FORMAT_HTML, (int)$stored->get('teacherguidanceformat'));
 
         $moduleinfo->edpreset_presetname = 'Weekly reading, revised';
         mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course);
 
         $this->assertSame(1, meta::count_records(['cmid' => (int)$page->cmid]));
         $this->assertSame('Weekly reading, revised', meta::get_for_cm((int)$page->cmid)->get('presetname'));
+    }
+
+    /**
+     * The format the curator chose is the one that gets stored.
+     *
+     * A site running the plain textarea editor still offers the whole format menu, so the submitted
+     * format cannot be assumed to be HTML.
+     */
+    public function test_post_actions_stores_the_submitted_format(): void {
+        $course = $this->setup_template_course();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
+
+        mod_edpreset_coursemodule_edit_post_actions((object)[
+            'coursemodule' => $page->cmid,
+            'modulename' => 'page',
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => ['text' => 'Use *this* one.', 'format' => FORMAT_MARKDOWN, 'itemid' => 0],
+            'edpreset_teacherguidance' => ['text' => 'Set the **date**.', 'format' => FORMAT_MARKDOWN, 'itemid' => 0],
+        ], $course);
+
+        $stored = meta::get_for_cm((int)$page->cmid);
+        $this->assertSame('Use *this* one.', $stored->get('description'));
+        $this->assertSame((int)FORMAT_MARKDOWN, (int)$stored->get('descriptionformat'));
+        $this->assertSame((int)FORMAT_MARKDOWN, (int)$stored->get('teacherguidanceformat'));
+    }
+
+    /**
+     * Guidance the curator emptied is stored as nothing at all.
+     *
+     * A rich text editor typed into and then emptied again submits markup, not an empty string.
+     * Storing that would make the preset emit a teacher note holding a blank paragraph into every
+     * course it is copied into, because "has guidance" is a plain emptiness test downstream.
+     *
+     * @dataProvider emptied_guidance_provider
+     * @param string $guidance What the editor submitted.
+     */
+    public function test_post_actions_stores_emptied_guidance_as_nothing(string $guidance): void {
+        $course = $this->setup_template_course();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
+
+        mod_edpreset_coursemodule_edit_post_actions((object)[
+            'coursemodule' => $page->cmid,
+            'modulename' => 'page',
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
+            'edpreset_teacherguidance' => self::editor($guidance),
+        ], $course);
+
+        $this->assertSame('', meta::get_for_cm((int)$page->cmid)->get('teacherguidance'));
+    }
+
+    /**
+     * The shapes an emptied rich text editor submits.
+     *
+     * "<p>&nbsp;</p>" is deliberately absent: html_is_blank() counts a literal &nbsp; entity as
+     * content, so that one is stored rather than normalised away. See blank_description_provider().
+     *
+     * @return array[]
+     */
+    public static function emptied_guidance_provider(): array {
+        return [
+            'nothing at all' => [''],
+            'empty paragraph' => ['<p></p>'],
+            'paragraph holding only a line break' => ['<p><br></p>'],
+            'whitespace' => ["  \n  "],
+        ];
+    }
+
+    /**
+     * A plain string is understood as well as an editor's array.
+     *
+     * These fields reach the callback as an array only when the settings form was submitted. A
+     * caller assembling the module info by hand - a test, an import script - passes a string, and
+     * treating that as the editor's missing 'text' key would silently store nothing.
+     */
+    public function test_post_actions_accepts_a_plain_string(): void {
+        $course = $this->setup_template_course();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
+
+        mod_edpreset_coursemodule_edit_post_actions((object)[
+            'coursemodule' => $page->cmid,
+            'modulename' => 'page',
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => '<p>Use this for a weekly reading.</p>',
+            'edpreset_teacherguidance' => '<p>Set the due date.</p>',
+        ], $course);
+
+        $stored = meta::get_for_cm((int)$page->cmid);
+        $this->assertSame('<p>Use this for a weekly reading.</p>', $stored->get('description'));
+        $this->assertSame('<p>Set the due date.</p>', $stored->get('teacherguidance'));
+        $this->assertSame((int)FORMAT_HTML, (int)$stored->get('descriptionformat'));
     }
 
     /**

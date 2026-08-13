@@ -132,11 +132,17 @@ class mod_edpreset_generator extends testing_module_generator {
         $fields += [
             'cmid' => $cmid,
             'presetname' => 'Test preset ' . $counter,
-            'description' => 'Description of test preset ' . $counter,
+            // The shape the rich text editor writes, so what the baker renders here is what it
+            // renders in production. Both formats are stated rather than left to the persistent's
+            // default, because the format is what decides how the text is rendered at bake time and
+            // a test overriding the text should be able to see which format it is overriding.
+            'description' => '<p>Description of test preset ' . $counter . '</p>',
+            'descriptionformat' => FORMAT_HTML,
             // Deliberately empty by default, like defaultname: guidance is optional, and a
             // non-empty value makes every copy emit a teacher note. Only the tests about that
             // should opt in.
             'teacherguidance' => '',
+            'teacherguidanceformat' => FORMAT_HTML,
             'tags' => '',
             // Deliberately empty by default: a non-empty value renames every copied activity, and
             // that should only happen in the tests that are about it.
@@ -264,15 +270,29 @@ class mod_edpreset_generator extends testing_module_generator {
      * Behat entity: the following "mod_edpreset > preset details" exist, with an activity column
      * holding the activity's idnumber.
      *
+     * A description or guidance column is HTML, as the rich text editor writes it - a feature file
+     * giving a plain sentence is giving valid HTML and gets it back unchanged. The two format
+     * columns are accepted so a feature can pin a different one, but they are rarely worth setting.
+     *
      * @param array $data Must contain cmid and presetname.
      */
     public function create_behat_preset_details(array $data): void {
         $cmid = (int)$data['cmid'];
         unset($data['cmid']);
 
+        $allowed = [
+            'presetname',
+            'description',
+            'descriptionformat',
+            'teacherguidance',
+            'teacherguidanceformat',
+            'tags',
+            'defaultname',
+        ];
+
         $this->create_metadata($cmid, array_filter(
             $data,
-            fn($key) => in_array($key, ['presetname', 'description', 'teacherguidance', 'tags', 'defaultname'], true),
+            fn($key) => in_array($key, $allowed, true),
             ARRAY_FILTER_USE_KEY
         ));
     }
