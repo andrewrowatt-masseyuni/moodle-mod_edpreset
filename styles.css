@@ -1,16 +1,3 @@
-.optioninfo a:has(.mod_edpreset-icon) {
-    position: relative;
-
-    &::after {
-        content: "\f15c";
-        font-family: "Font Awesome 6 Free";
-        font-weight: 100;
-        position: absolute;
-        right: 4px;
-        color: #0007;
-    }
-}
-
 /*
  * The "Preset details" group on an activity's settings form.
  *
@@ -625,4 +612,29 @@
 .edpreset-reorder-meta-group {
     display: flex;
     gap: 0.5rem;
+}
+
+.modchooser [role="menuitem"][data-internal^="edpreset_"] {
+    order: 2;
+}
+
+.modchooser [role="menuitem"][data-internal="edpreset_template"] {
+    order: 3;
+}
+
+.modchooser [data-internal^="edpreset_"] .optionname {
+    font-size: 0.875rem;
+}
+
+.optioninfo a:has(.mod_edpreset-icon) {
+    position: relative;
+
+    &::after {
+        content: "\f15c";
+        font-family: "Font Awesome 6 Free";
+        font-weight: 100;
+        position: absolute;
+        right: 4px;
+        color: #0007;
+    }
 }
