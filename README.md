@@ -177,6 +177,42 @@ The section id supplies both the course and the section number. That form shows 
 templates group. Both forms of the page require a sesskey, so the link has to be minted server-side
 for the user following it.
 
+#### The theme_snap section menu
+
+On [theme_snap](https://moodle.org/plugins/theme_snap) each section's `⋮` **extra actions** menu
+carries an **Apply template** item built on that link. Snap has no extension point for the menu, so
+the theme needs a patch - deliberately the smallest one that works, because Snap is vendor code that
+an upgrade replaces wholesale.
+
+In `theme/snap/classes/output/format_section_trait.php`, in `section_edit_control_items()`,
+**immediately after** the `foreach` that renders each action into `$controls` and before the
+`if (count($controls) > self::$SECTION_ACTIONS_BEFORE_MENU)` block:
+
+```php
+if (class_exists('\mod_edpreset\local\section_action')) {
+    $actions = array_merge($actions, \mod_edpreset\local\section_action::for_snap($course, $section));
+}
+```
+
+Everything else is in this plugin: `\mod_edpreset\local\section_action` decides whether to offer
+the item and builds it, and `styles.css` gives it its icon. Three things about that placement are
+load-bearing:
+
+* **After the render loop, not before.** Snap renders the first two actions to HTML but hands the
+  dropdown the *objects*, which Mustache reads public properties off directly. An item added before
+  the loop would reach `$this->render()`, which dispatches on class name and would need a
+  `render_*()` method in the theme - more vendor code, for nothing.
+* **The item lands in the dropdown.** `$controls` still holds six entries, so the menu branch always
+  runs, and `array_slice($actions, 2)` picks the new item up last. Snap sets `isinmenu` on it there.
+* **`class_exists()`**, so removing this plugin cannot break the theme.
+
+`section_action::for_snap()` returns objects shaped for `theme_snap/course_action_section`: public
+`title`, `url`, `class`, `ariapressed`, `arialabel` and `isinmenu`, with the two aria properties
+being whole attribute strings rather than values, as Snap's own renderables build them. A Snap
+upgrade that changes that template or `section_edit_control_items()` drops the patch, and the item
+simply stops appearing - `tests/snap_section_menu_test.php` is what notices, and the patch above is
+what to reapply.
+
 ## Technical details
 
 ### Plugin shape
@@ -604,6 +640,11 @@ and the scrubber, plus a test data generator.
 ```
 vendor/bin/phpunit --testsuite mod_edpreset_testsuite
 ```
+
+`tests/snap_section_menu_test.php` is the odd one out: it renders a section's controls through
+theme_snap's own renderer to check that the **Apply template** item is really in the dropdown, which
+is the only automated guard on the theme patch described above. It skips itself where theme_snap is
+not installed, CI included - the plugin does not depend on the theme.
 
 Behat covers section templates in `tests/behat/section_templates.feature`. Two things about it are
 worth knowing before adding to it:

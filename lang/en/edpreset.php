@@ -161,6 +161,7 @@ $string['scrubfailed'] = 'None - the backup could not be rewritten.';
 $string['scrubnothingtodo'] = 'None - this module has no dates in the supported list.';
 $string['scrubrepackfailed'] = 'The rewritten backup archive could not be repacked.';
 $string['scrubwritefailed'] = 'Could not write the rewritten backup file {$a}.';
+$string['section:applytemplate'] = 'Apply template';
 $string['settings:datefields'] = 'Additional date fields';
 $string['settings:datefields_desc'] = 'Dates are cleared from a preset\'s backup using a built-in list of fields per activity type. Use this to cover an activity type the list does not know about, one per line, as "activityname: field, field".
 

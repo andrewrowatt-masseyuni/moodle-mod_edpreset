@@ -28,6 +28,48 @@ use mod_edpreset\local\access;
  */
 final class access_test extends \advanced_testcase {
     /**
+     * An editing teacher may copy into their own course.
+     */
+    public function test_can_copy_into_allows_an_editing_teacher(): void {
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $this->assertTrue(access::can_copy_into($course, 1));
+    }
+
+    /**
+     * A student may not, and asking must answer rather than throw - callers use this to decide
+     * whether to offer a link at all.
+     */
+    public function test_can_copy_into_refuses_a_student(): void {
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $this->setUser($student);
+
+        $this->assertFalse(access::can_copy_into($course, 1));
+    }
+
+    /**
+     * The section bound is part of the same gate, so it answers here too.
+     */
+    public function test_can_copy_into_refuses_a_section_beyond_the_maximum(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $this->resetAfterTest();
+        $course = $this->getDataGenerator()->create_course();
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        $maxsections = course_get_format($course)->get_max_sections();
+
+        $this->assertFalse(access::can_copy_into($course, $maxsections + 1));
+    }
+
+    /**
      * The activity chooser sends one id; the chooser page's form sends a list.
      */
     public function test_clean_presets_accepts_one_or_many(): void {

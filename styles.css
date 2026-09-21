@@ -638,3 +638,16 @@
         color: #0007;
     }
 }
+
+/*
+ * The "Apply template" item on theme_snap's section actions menu.
+ *
+ * Snap prints an action's class onto a 1em .menu-icon div whose ::before carries the icon as a
+ * background image, so a class with no rule of its own leaves a blank box where the icon goes. The
+ * rule lives here rather than in the theme's SCSS so that a theme upgrade cannot take it away, and
+ * so the whole feature is one small patch to vendor code plus plugin files. Snap's own hover rule
+ * whitens the image, so nothing extra is needed for that state.
+ */
+.extra-actions-menu .menu-icon.edpreset-applytemplate::before {
+    background-image: url([[pix:mod_edpreset|monologo]]);
+}

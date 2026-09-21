@@ -86,6 +86,27 @@ class access {
     }
 
     /**
+     * Whether the current user may copy a preset into a course section.
+     *
+     * The same rules as require_can_copy_into(), asked rather than enforced, for callers deciding
+     * whether to offer a link at all. It delegates rather than repeating the checks so there is
+     * only ever one set of rules to keep right.
+     *
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The target section number.
+     * @return bool
+     */
+    public static function can_copy_into(stdClass $course, int $sectionnum): bool {
+        try {
+            self::require_can_copy_into($course, $sectionnum);
+            return true;
+        } catch (moodle_exception $e) {
+            // Includes required_capability_exception, which extends moodle_exception.
+            return false;
+        }
+    }
+
+    /**
      * Turn the presets request parameter into a list of ids to copy, in the order asked for.
      *
      * @param string $sequence A PARAM_SEQUENCE list of preset ids.
