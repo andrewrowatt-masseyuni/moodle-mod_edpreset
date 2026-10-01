@@ -253,4 +253,52 @@ final class chooser_page_test extends \advanced_testcase {
         $this->assertFalse($cards['Learning model']->locked);
         $this->assertSame(['Restricted section'], $this->names($data->allsections));
     }
+
+    /**
+     * An ordinary section's summary is shown under its group heading, and only there.
+     */
+    public function test_section_summary_is_shown_under_its_group(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $templatecourse = $plugingenerator->create_template_course();
+
+        $starred = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'category' => 'Formative assessment',
+            'sectionsummary' => '<p>Ways to check understanding.</p>',
+        ]);
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'category' => 'Knowledge check',
+            // What an editor that was typed into and emptied again leaves behind.
+            'sectionsummary' => '<p></p>',
+        ]);
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Weekly cycle',
+            'sectionsummary' => '<p>A week of teaching.</p>',
+        ]);
+        \mod_edpreset\external\set_favourite::execute((int)$starred->get('id'), true);
+
+        $groups = [];
+        foreach ($this->export()->groups as $group) {
+            $groups[$group->name] = $group;
+        }
+
+        $this->assertTrue($groups['Formative assessment']->hassummary);
+        $this->assertSame('<p>Ways to check understanding.</p>', $groups['Formative assessment']->summary);
+        $this->assertFalse($groups['Knowledge check']->hassummary);
+
+        // A template's summary is its card's description, not its group's.
+        $this->assertFalse($groups[get_string('chooser:sectiontemplates', 'mod_edpreset')]->hassummary);
+        $this->assertSame(
+            '<p>A week of teaching.</p>',
+            $this->cards_by_title($this->export(true))['Weekly cycle']->description
+        );
+
+        // Starred is not a section, so it has no summary of its own.
+        $this->assertFalse($groups[get_string('chooser:starred', 'mod_edpreset')]->hassummary);
+    }
 }

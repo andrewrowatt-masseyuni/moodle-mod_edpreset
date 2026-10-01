@@ -198,7 +198,7 @@ URL that reaches an archive. Keep it that way.
   without verifying that callback still exists and is still dispatched.
 * Curator markdown fields are `PARAM_RAW` on the form and are rendered and cleaned **exactly once**,
   at bake time, with `format_text(…, ['noclean' => false])`. Persistent properties holding that
-  already-cleaned HTML (`description`, `templatesummary`) are `PARAM_RAW` and must
+  already-cleaned HTML (`description`, `sectionsummary`) are `PARAM_RAW` and must
   never be re-cleaned or escaped downstream.
 * Every form element added by `mod_edpreset_coursemodule_standard_elements()` must keep its
   `edpreset_` prefix — HTML_QuickForm silently drops an element clashing with the `name`/`intro`/

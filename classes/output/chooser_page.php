@@ -178,6 +178,7 @@ class chooser_page implements renderable, templatable {
 
         $starred = [];
         $bycategory = [];
+        $summaries = [];
         foreach ($presets as $preset) {
             $card = $this->export_card($preset, $favourites);
 
@@ -189,11 +190,16 @@ class chooser_page implements renderable, templatable {
 
             $category = (string)$preset->get('category');
             $bycategory[$category][] = $card;
+            // Every preset from a section carries the same copy. The first non-empty one wins, so
+            // that two sections sharing a name - and therefore a group - still show a summary.
+            if (($summaries[$category] ?? '') === '') {
+                $summaries[$category] = (string)$preset->get('sectionsummary');
+            }
         }
 
         $categories = [];
         foreach ($bycategory as $category => $cards) {
-            $categories[] = $this->export_group($category, $cards, $collapsed, false);
+            $categories[] = $this->export_group($category, $cards, $collapsed, false, false, $summaries[$category]);
         }
 
         return [
@@ -282,6 +288,8 @@ class chooser_page implements renderable, templatable {
      * @param string[] $collapsed The section keys this user has collapsed.
      * @param bool $isstarred Whether this is the Starred pseudo-group.
      * @param bool $istemplategroup Whether these are section template cards rather than preset cards.
+     * @param string $summary Cleaned HTML of the section's summary, or '' for none. Only an ordinary
+     *     section's group has one: the template cards carry their own, and Starred is no section.
      * @return stdClass
      */
     protected function export_group(
@@ -289,7 +297,8 @@ class chooser_page implements renderable, templatable {
         array $cards,
         array $collapsed,
         bool $isstarred,
-        bool $istemplategroup = false
+        bool $istemplategroup = false,
+        string $summary = ''
     ): stdClass {
         $key = self::section_key($name);
 
@@ -300,6 +309,10 @@ class chooser_page implements renderable, templatable {
         // Mustache cannot choose a partial dynamically, so the template branches on this.
         $group->istemplategroup = $istemplategroup;
         $group->cards = $cards;
+        // Already cleaned at bake time, so the template renders it unescaped - the same contract as
+        // a preset description. html_is_blank() so an emptied editor's "<p></p>" shows nothing.
+        $group->summary = $summary;
+        $group->hassummary = !html_is_blank($summary);
         $group->count = count($cards);
         $group->expanded = !in_array($key, $collapsed, true);
 

@@ -100,9 +100,11 @@ class preset extends persistent {
             // Whether the template this preset belongs to is marked [Template,restricted]. Carried on
             // every member, like templatename. Meaningless on a preset that is not a member.
             'templaterestricted' => ['type' => PARAM_BOOL, 'default' => 0],
-            // Cleaned HTML like description, and PARAM_RAW for the same reason: the cleaning has
-            // already happened at bake time and must not be repeated or escaped here.
-            'templatesummary' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
+            // The exemplar's section summary: a template card's description, or the text under an
+            // ordinary section's heading. Cleaned HTML like description, and PARAM_RAW for the same
+            // reason: the cleaning has already happened at bake time and must not be repeated or
+            // escaped here.
+            'sectionsummary' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'sectionnum' => ['type' => PARAM_INT, 'default' => 0],
             'sortorder' => ['type' => PARAM_INT, 'default' => 0],
             'status' => [

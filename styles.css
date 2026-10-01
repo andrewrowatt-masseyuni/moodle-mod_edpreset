@@ -168,9 +168,10 @@
  * cards are a fixed-width grid, so anything with an intrinsic width has to be told to fit: without
  * this a single wide image or table widens its whole grid column and every card in the row with it.
  *
- * The height cap above already handles length; this is only about width.
+ * The height cap above already handles length; this is only about width. A section summary under a
+ * group heading is written in the same editor, so it gets the same treatment.
  */
-.edpreset-chooser .edpreset-card-description {
+.edpreset-chooser :is(.edpreset-card-description, .edpreset-group-summary) {
     overflow-wrap: anywhere;
 
     img {
@@ -271,6 +272,17 @@
     font-weight: 400;
     min-width: 1.4rem;
     padding: 0.2em 0.55em;
+}
+
+/* A section's summary, between its heading and its cards: quieter than either. */
+.edpreset-chooser .edpreset-group-summary {
+    padding: 0.5rem 0.5rem 0;
+    font-size: 0.875rem;
+    color: #5b6573;
+}
+
+.edpreset-chooser .edpreset-group-summary > :last-child {
+    margin-bottom: 0;
 }
 
 /* Cards sit directly under the header, no inset card-body padding. */

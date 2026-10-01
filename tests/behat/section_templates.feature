@@ -106,7 +106,7 @@ Feature: Add a whole section of preset activities at once
     When I open the preset chooser for course "C1" section "2"
     Then I should not see "You cannot select this template"
     And I should see "Recommended" in the "Weekly cycle" "mod_edpreset > Section template"
-    And I should see "You last used this template in the course." in the "Weekly cycle" "mod_edpreset > Section template"
+    And I should see "This template was last used in the course." in the "Weekly cycle" "mod_edpreset > Section template"
     And "Add to course" "link" should exist in the "Assessment block" "mod_edpreset > Section template"
 
   Scenario: A recorded template that no longer exists releases the course

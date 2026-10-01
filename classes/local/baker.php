@@ -147,7 +147,7 @@ class baker {
      *
      * @param stdClass $course The template course.
      * @param section_info $sectioninfo The section.
-     * @return array{category: string, templatename: string, templaterestricted: bool, templatesummary: string}
+     * @return array{category: string, templatename: string, templaterestricted: bool, sectionsummary: string}
      */
     protected static function section_data(stdClass $course, section_info $sectioninfo): array {
         // Deliberately the raw name: get_section_name() below is format_string()ed and falls back to
@@ -164,12 +164,15 @@ class baker {
                 )
                 : '',
             'templaterestricted' => template::is_restricted_section_name($sectioninfo->name),
-            'templatesummary' => $istemplate ? self::render_section_summary($sectioninfo) : '',
+            'sectionsummary' => self::render_section_summary($sectioninfo),
         ];
     }
 
     /**
-     * Turn a template section's summary into the cleaned HTML shown on its card.
+     * Turn a section's summary into the cleaned HTML the preset chooser page shows.
+     *
+     * A template section's summary is its card's description; any other section's sits under that
+     * section's group heading.
      *
      * Deliberately cleaned - noclean false - where core renders section summaries with noclean true
      * (see core_courseformat\output\local\content\section\summary::format_summary_text). Core's
@@ -179,9 +182,9 @@ class baker {
      *
      * Note that a summary embedding an uploaded file will render a broken link for anyone who cannot
      * access the template course: core serves that filearea through require_course_login(). Section
-     * summaries used as template descriptions should be text.
+     * summaries in the template course should be text.
      *
-     * @param section_info $sectioninfo The template section.
+     * @param section_info $sectioninfo The section.
      * @return string Cleaned HTML, or '' when the section has no summary.
      */
     protected static function render_section_summary(section_info $sectioninfo): string {
@@ -242,7 +245,7 @@ class baker {
         $preset->set('category', $sectiondata['category']);
         $preset->set('templatename', $sectiondata['templatename']);
         $preset->set('templaterestricted', $sectiondata['templaterestricted']);
-        $preset->set('templatesummary', $sectiondata['templatesummary']);
+        $preset->set('sectionsummary', $sectiondata['sectionsummary']);
         $preset->set('sectionnum', (int)$cm->sectionnum);
         $preset->set('sortorder', $sortorder);
         $preset->set('archetype', (int)plugin_supports('mod', $cm->modname, FEATURE_MOD_ARCHETYPE, MOD_ARCHETYPE_OTHER));

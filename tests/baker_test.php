@@ -253,6 +253,41 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
+     * Every section's summary is stored, cleaned, on its presets - not only a template section's.
+     */
+    public function test_section_summaries_are_denormalised(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_template_course([
+            1 => [
+                'name' => 'Formative assessment',
+                'summary' => '<p>Ways to check understanding.</p><script>alert(1)</script>',
+                'activities' => [['modname' => 'page', 'name' => 'Ordinary page']],
+            ],
+            2 => [
+                'name' => 'Weekly cycle [Template]',
+                'summary' => '<p>A week of teaching.</p>',
+                'activities' => [['modname' => 'page', 'name' => 'Template page']],
+            ],
+            3 => [['modname' => 'page', 'name' => 'Unsummarised page']],
+        ]);
+
+        baker::rebuild();
+
+        $ordinary = (string)preset::get_record(['title' => 'Ordinary page'])->get('sectionsummary');
+        $this->assertStringContainsString('Ways to check understanding.', $ordinary);
+        // Read by every teacher on the site, so cleaned like a description.
+        $this->assertStringNotContainsString('<script', $ordinary);
+
+        $this->assertStringContainsString(
+            'A week of teaching.',
+            (string)preset::get_record(['title' => 'Template page'])->get('sectionsummary')
+        );
+        $this->assertSame('', (string)preset::get_record(['title' => 'Unsummarised page'])->get('sectionsummary'));
+    }
+
+    /**
      * The description is cleaned at bake time, not at display time.
      *
      * This is the whole reason the rendering happens here rather than in the chooser: the field is

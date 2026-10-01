@@ -79,7 +79,9 @@ fill in the **Preset details** group at the top of its settings form:
 | Recommended section | no | The section of a teacher's course the preset is meant for, e.g. `Nau mai \| Welcome`. Advisory only — see below. |
 
 An activity with no preset details is not a preset and is never scanned, baked or offered. Section
-names in the template course become the preset categories.
+names in the template course become the preset categories, and a section's **summary** is shown under
+its category heading on the preset activities page, above the cards, and is hidden along with them
+when a teacher collapses the group. Every teacher on the site reads it, so write it for them.
 
 The **recommended section** names a section of the *teacher's* course, not of the template course,
 so it is free text rather than a choice. It never restricts anything: a preset can still be added to
@@ -122,8 +124,8 @@ appear individually, in the standard activity chooser or on the preset activitie
 End the name in `[Template,restricted]` instead to offer it only to some courses — see
 [Restricted templates](#restricted-templates).
 
-> Use text for a template's section summary. An image uploaded into it is served through the template
-> course's own file area, so it will not load for teachers who cannot access that course.
+> Use text for section summaries in the template course. An image uploaded into one is served through
+> the template course's own file area, so it will not load for teachers who cannot access that course.
 
 ### Adding a section template to a course
 
@@ -310,7 +312,7 @@ member row by the baker — which is exactly what `category` already did with th
 | --- | --- |
 | `templatename` | Section name with the marker stripped. **Non-empty is the flag** that a preset is a template member. |
 | `templaterestricted` | Whether the marker carried an option, i.e. `[Template,restricted]`. |
-| `templatesummary` | Cleaned HTML of the section summary, rendered once at bake time. |
+| `sectionsummary` | Cleaned HTML of the section summary, rendered once at bake time. Kept for **every** section, not only templates: a template card shows it as its description, an ordinary section's group shows it under the heading. (It was `templatesummary` while only templates used it.) |
 
 A template's identity in URLs and grouping is its `sectionnum`, not its name — two sections could
 strip to the same name.

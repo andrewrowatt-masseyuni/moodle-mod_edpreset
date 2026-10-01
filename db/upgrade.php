@@ -106,5 +106,22 @@ function xmldb_edpreset_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026100201, 'edpreset');
     }
 
+    if ($oldversion < 2026100202) {
+        // The section summary used to be kept for template sections only, as their card's
+        // description. Ordinary sections now show theirs under the group heading on the preset
+        // chooser page, so the column holds every section's summary and is renamed to say so.
+        $table = new xmldb_table('edpreset_item');
+        $field = new xmldb_field('templatesummary', XMLDB_TYPE_TEXT, null, null, null, null, null, 'templaterestricted');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->rename_field($table, $field, 'sectionsummary');
+        }
+
+        // Template rows keep their summaries through the rename; ordinary sections have none stored
+        // until the next rebuild, so queue one rather than wait for the nightly reconcile.
+        \core\task\manager::queue_adhoc_task(new \mod_edpreset\task\rebuild_presets(), true);
+
+        upgrade_mod_savepoint(true, 2026100202, 'edpreset');
+    }
+
     return true;
 }

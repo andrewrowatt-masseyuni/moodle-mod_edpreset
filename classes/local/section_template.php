@@ -347,7 +347,7 @@ class section_template {
         return new self(
             $sectionnum,
             (string)$first->get('templatename'),
-            (string)$first->get('templatesummary'),
+            (string)$first->get('sectionsummary'),
             array_values($members),
             (bool)$first->get('templaterestricted')
         );

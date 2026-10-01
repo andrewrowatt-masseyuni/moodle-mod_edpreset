@@ -37,7 +37,8 @@
     * copyurl string - where the selection is posted
     * sesskey string
     * hasgroups bool
-    * groups array - name, key, count, expanded, starred, istemplategroup, cards
+    * groups array - name, key, count, expanded, starred, istemplategroup, cards, hassummary, summary
+      (already cleaned HTML of the section summary, rendered unescaped; ordinary sections only)
     * alltags array - name
     * allsections array - name; every recommended section in use, offered as pseudo tags
     * hastags bool - whether there are any tags or recommended sections to filter by
@@ -63,6 +64,8 @@
                 "expanded": true,
                 "starred": false,
                 "istemplategroup": false,
+                "hassummary": true,
+                "summary": "<p>Ways to check what students have learnt.</p>",
                 "cards": [
                     {
                         "presetid": 7,
@@ -162,6 +165,11 @@
                             </a>
                         </div>
                         <div id="edpreset-group-{{key}}-{{uniqid}}" class="collapse {{#expanded}}show{{/expanded}}">
+                            {{! Inside the collapsing panel, so collapsing a group hides its summary along
+                                with its cards. }}
+                            {{#hassummary}}
+                                <div class="edpreset-group-summary">{{{summary}}}</div>
+                            {{/hassummary}}
                             {{! Mustache cannot pick a partial at render time, so the group says
                                 which kind of card it holds and this branches on it. }}
                             <div class="card-body edpreset-cards">
