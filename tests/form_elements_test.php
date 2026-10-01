@@ -43,6 +43,8 @@ final class form_elements_test extends \advanced_testcase {
         'edpreset_tags',
         'edpreset_defaultname',
         'edpreset_recommendedsection',
+        'edpreset_status',
+        'edpreset_showinchooser',
     ];
 
     /**
@@ -288,6 +290,8 @@ final class form_elements_test extends \advanced_testcase {
                 'tags' => 'Content, Engage with content',
                 'defaultname' => 'This week\'s reading',
                 'recommendedsection' => 'Nau mai | Welcome',
+                'status' => meta::STATUS_REVIEW,
+                'showinchooser' => 1,
             ]]],
         ]);
 
@@ -311,6 +315,24 @@ final class form_elements_test extends \advanced_testcase {
         $this->assertSame('Content, Engage with content', $mform->getElement('edpreset_tags')->getValue());
         $this->assertSame("This week's reading", $mform->getElement('edpreset_defaultname')->getValue());
         $this->assertSame('Nau mai | Welcome', $mform->getElement('edpreset_recommendedsection')->getValue());
+        $this->assertSame([meta::STATUS_REVIEW], $mform->getElement('edpreset_status')->getValue());
+        $this->assertEquals([1], $mform->getElement('edpreset_showinchooser')->getValue());
+    }
+
+    /**
+     * A new preset starts as a draft, so it is offered to nobody until the curator says so.
+     */
+    public function test_a_new_preset_defaults_to_draft(): void {
+        $course = $this->setup_template_course();
+        $mform = $this->build_form($course, 'page', 1);
+
+        $this->assertSame([meta::STATUS_DRAFT], $mform->getElement('edpreset_status')->getValue());
+        // Only on the preset chooser page until the curator says otherwise.
+        $this->assertEquals([0], $mform->getElement('edpreset_showinchooser')->getValue());
+        $this->assertSame(
+            meta::STATUSES,
+            array_map(fn($option) => $option['attr']['value'], $mform->getElement('edpreset_status')->_options)
+        );
     }
 
     /**
@@ -397,12 +419,13 @@ final class form_elements_test extends \advanced_testcase {
         ]);
         $this->assertSame([], $errors);
 
+        // A status the form never offers - from a crafted post or a web service - is refused.
         $errors = mod_edpreset_coursemodule_validation($form, [
             'edpreset_presetname' => 'Weekly reading',
             'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
-            'edpreset_defaultname' => '',
+            'edpreset_status' => 'published',
         ]);
-        $this->assertSame([], $errors);
+        $this->assertSame(['edpreset_status'], array_keys($errors));
     }
 
     /**
@@ -502,8 +525,12 @@ final class form_elements_test extends \advanced_testcase {
         $this->assertSame('<p>Use this for a weekly reading.</p>', $stored->get('description'));
         $this->assertSame('Content, engage with content', $stored->get('tags'));
         $this->assertSame('Nau mai | Welcome', $stored->get('recommendedsection'));
+        // Nothing submitted for the status is a draft, never a release, and nothing submitted for
+        // the activity chooser keeps the preset out of it.
+        $this->assertSame(meta::STATUS_DRAFT, $stored->get('status'));
+        $this->assertFalse((bool)$stored->get('showinchooser'));
 
-        // The format has to be stored alongside the text: it is what the baker renders with.
+        // The format has to be stored alongside the text: it is what the scan renders with.
         $this->assertSame((int)FORMAT_HTML, (int)$stored->get('descriptionformat'));
 
         $moduleinfo->edpreset_presetname = 'Weekly reading, revised';
@@ -511,6 +538,38 @@ final class form_elements_test extends \advanced_testcase {
 
         $this->assertSame(1, meta::count_records(['cmid' => (int)$page->cmid]));
         $this->assertSame('Weekly reading, revised', meta::get_for_cm((int)$page->cmid)->get('presetname'));
+    }
+
+    /**
+     * The release status and the activity chooser choice are saved, and copied onto the preset
+     * straight away.
+     *
+     * Archiving or returning a preset to draft is how a curator withdraws it, and that must not
+     * wait for the rescan this save queues.
+     */
+    public function test_post_actions_applies_the_status_at_once(): void {
+        $course = $this->setup_template_course();
+        $page = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $plugingenerator->create_metadata((int)$page->cmid, ['presetname' => 'Weekly reading']);
+        $plugingenerator->scan();
+        $this->assertSame(meta::STATUS_RELEASED, preset::get_record(['templatecmid' => $page->cmid])->get('status'));
+
+        mod_edpreset_coursemodule_edit_post_actions((object)[
+            'coursemodule' => $page->cmid,
+            'modulename' => 'page',
+            'edpreset_presetname' => 'Weekly reading',
+            'edpreset_description' => self::editor('<p>Use this for a weekly reading.</p>'),
+            'edpreset_status' => meta::STATUS_ARCHIVED,
+            'edpreset_showinchooser' => 1,
+        ], $course);
+
+        $details = meta::get_for_cm((int)$page->cmid);
+        $preset = preset::get_record(['templatecmid' => $page->cmid]);
+        $this->assertSame(meta::STATUS_ARCHIVED, $details->get('status'));
+        $this->assertSame(meta::STATUS_ARCHIVED, $preset->get('status'));
+        $this->assertTrue((bool)$details->get('showinchooser'));
+        $this->assertTrue((bool)$preset->get('showinchooser'));
     }
 
     /**

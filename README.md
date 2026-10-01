@@ -50,18 +50,24 @@ The plugin does nothing until it is enabled and pointed at a template course.
 
    | Setting | Default | Purpose |
    | --- | --- | --- |
-   | `enabled` | off | Master switch. When off, no presets are offered and no backups are taken. |
+   | `enabled` | off | Master switch. When off, no presets are offered. |
    | `templatecourseid` | *(empty)* | The course holding the exemplar activities. |
    | `maxpresets` | 100 | Cap on how many presets are offered at once. |
-   | `maxbackupsize` | 104857600 (100 MB) | Exemplars with a larger backup are not offered. `0` disables the limit. |
    | `datefields` | *(empty)* | Extra date fields for activity types the built-in scrub map does not cover, one `modname: field, field` pair per line. |
    | `preventmixing` | on | Lock a course to the first section template it uses. See [One template per course](#one-template-per-course). |
    | `ignoreinvalidtemplate` | on | Release a course whose recorded template has since been renamed or deleted. |
-   | `sandboxshortname` | `edpreset_restore_test` | Short name of the hidden course used for test restores. |
-   | `sandboxcategoryid` | site default | Category the test-restore course is created in. |
 
-5. Open **Site administration → Plugins → Activity modules → Manage preset activities** to watch the
-   pipeline, force a rescan, re-bake a single preset, or clear every cached archive.
+5. Open **Site administration → Plugins → Activity modules → Manage preset activities** to see every
+   preset with its release status and any copy that has failed, and to rescan the template course.
+6. Give the people who will review presets before they are released the **See and add preset
+   activities that are ready for review** capability (`mod/edpreset:reviewpresets`) - see
+   [Reviewing presets](#reviewing-presets).
+
+Upgrading from a version before 0.8.0 leaves behind the hidden course earlier versions used for test
+restores (short name `edpreset_restore_test` unless it was changed). Nothing uses it any more, and it
+can be deleted. The upgrade also sets **Show in activity chooser** to Yes on the presets in section 1
+of the template course, which is what used to put a preset in the activity chooser, so teachers see
+no change.
 
 ## Usage
 
@@ -77,8 +83,10 @@ fill in the **Preset details** group at the top of its settings form:
 | Tags | no | Comma separated. Also prefixed onto the chooser description so tag search works there. |
 | Default activity name | no | The name the copied activity is given. |
 | Recommended section | no | The section of a teacher's course the preset is meant for, e.g. `Nau mai \| Welcome`. Advisory only — see below. |
+| Release status | yes | Who is offered the preset. Starts as **Draft** — see [Release status](#release-status). |
+| Show in activity chooser | yes | Whether the preset also appears in the standard activity chooser. Defaults to **No**. See below. |
 
-An activity with no preset details is not a preset and is never scanned, baked or offered. Section
+An activity with no preset details is not a preset and is never scanned or offered. Section
 names in the template course become the preset categories, and a section's **summary** is shown under
 its category heading on the preset activities page, above the cards, and is hidden along with them
 when a teacher collapses the group. Every teacher on the site reads it, so write it for them.
@@ -91,11 +99,51 @@ tag bar as a filter of its own. A tag
 and a section that share a name stay two separate filters. Whitespace is collapsed on save so that
 two presets meant for the same section cannot end up as two filters over a doubled space.
 
+### Release status
+
+A teacher always receives an exemplar exactly as it is at the moment they add it: there is no stored
+copy standing between the two. The release status on the **Preset details** is what lets a curator
+work on a preset without teachers picking it up half done.
+
+| Status | Offered to |
+| --- | --- |
+| **Draft** | Nobody. Where every new preset starts. |
+| **Ready for review** | Only people who can review presets - see below. They see it marked **For review**. |
+| **Released** | Every teacher who can add presets. |
+| **Archived** | Nobody. Kept, with any stars teachers gave it, in case it comes back. |
+
+The status applies as soon as the settings form is saved, so moving a preset back to Draft or to
+Archived withdraws it at once.
+
+To rework a released preset without teachers seeing the work in progress, **duplicate** the exemplar
+in the template course and change the copy. The copy arrives with the original's preset details,
+already set to Draft, so nothing needs retyping. When it is ready, release the copy and archive the
+original. Stars teachers gave the original stay with the original.
+
+A section template's activities each have their own status. Teachers are given the template's
+released activities; a draft activity being added to a released template is simply left out of it
+until it is released.
+
+### Reviewing presets
+
+Anyone with `mod/edpreset:reviewpresets` in a course is offered the presets that are **Ready for
+review** there, alongside the released ones, in both the activity chooser (titled "… (for review)")
+and the preset activities page (with a **For review** badge). They can add them like any other
+preset, which is the point: adding one to a course is how it is reviewed.
+
+The capability is checked in the course the preset would be added to, so it can be granted through a
+site-wide role or through a role in particular courses. Managers hold it by default.
+
 ### Adding a preset to a course
 
-* Presets in **section 1** of the template course appear directly in the standard activity chooser.
-* Everything in **sections 2 and above** is reached through the **Preset activities** item in the
-  chooser, which opens a filterable page with starring, tag filters and multi-select.
+* Every preset is on the **preset activities** page, reached through the **Preset activity or
+  section template** item in the standard activity chooser. It is a filterable page with starring,
+  tag filters and multi-select.
+* A preset whose details say **Show in activity chooser: Yes** also appears in the standard activity
+  chooser itself, alongside Moodle's own activities. Keep this for the few presets teachers reach for
+  most: that chooser shows everything it is given at once, so it stops being usable if every preset
+  is in it. The section a preset sits in plays no part, and a section template's activities never
+  appear there on their own, whatever their details say.
 
 Either route ends at the same handler, and the teacher is returned to the section they started from.
 A preset arrives already configured, so — unlike every other chooser item — the flow deliberately
@@ -165,8 +213,9 @@ Two site settings govern this, both on by default:
 | **Ignore previously selected templates that are now invalid** | On releases a course whose recorded template has since been renamed or deleted, rather than locking it out of every template with nothing on screen to explain why. Only meaningful while the setting above is on, so the admin page hides it otherwise. |
 
 "No longer available" means the curator has deleted or renamed the section — deliberately *not*
-"has no live members right now". A template mid-rebake momentarily has none, and treating that as
-gone would let a course slip its lock for good over a few minutes of cron.
+"has nothing released right now". A template whose activities are all back in draft while the curator
+reworks them is still the template the course settled on, and treating it as gone would let the
+course slip its lock for good.
 
 ### Restricted templates
 
@@ -281,7 +330,7 @@ Consequences of that shape, all of them load-bearing:
 | Table | Role |
 | --- | --- |
 | `edpreset_meta` | Curator input, entered on the exemplar's own settings form. **Source of truth**: an activity without a row here is not a preset. Holds the raw text as typed, with the format it was typed in. |
-| `edpreset_item` | Derived record, one per exemplar, rewritten wholesale by every rebuild. Holds cleaned HTML, chooser metadata, pipeline status and archive fingerprints. |
+| `edpreset_item` | Derived record, one per exemplar, rewritten wholesale by every rebuild. Holds cleaned HTML, chooser metadata, the release status copied from `edpreset_meta`, and why the last copy failed, if it did. |
 | `edpreset` | Stub instance table (see above). Never written to. |
 
 `edpreset_item` rows are **upserted on `templatecmid`**, never deleted and reinserted, because user
@@ -306,13 +355,13 @@ intended order is stored simply by existing. `\mod_edpreset\local\section_templa
 grouping.
 
 The facts a template card needs that a preset row did not already carry are denormalised onto every
-member row by the baker — which is exactly what `category` already did with the section name:
+member row by the scan — which is exactly what `category` already did with the section name:
 
 | Column | Meaning |
 | --- | --- |
 | `templatename` | Section name with the marker stripped. **Non-empty is the flag** that a preset is a template member. |
 | `templaterestricted` | Whether the marker carried an option, i.e. `[Template,restricted]`. |
-| `sectionsummary` | Cleaned HTML of the section summary, rendered once at bake time. Kept for **every** section, not only templates: a template card shows it as its description, an ordinary section's group shows it under the heading. (It was `templatesummary` while only templates used it.) |
+| `sectionsummary` | Cleaned HTML of the section summary, rendered once when the preset is scanned. Kept for **every** section, not only templates: a template card shows it as its description, an ordinary section's group shows it under the heading. (It was `templatesummary` while only templates used it.) |
 
 A template's identity in URLs and grouping is its `sectionnum`, not its name — two sections could
 strip to the same name.
@@ -333,8 +382,10 @@ members would let the cap truncate a template mid-way and ship a set that silent
 
 ### Chooser integration
 
-`mod_edpreset_get_course_content_items()` supplies the per-course items;
-`mod_edpreset_get_all_content_items()` supplies the context-free list. The second is not optional:
+`mod_edpreset_get_course_content_items()` supplies the per-course items: the offered presets marked
+**Show in activity chooser** (`showinchooser`), plus the placeholder that opens the preset chooser
+page. `mod_edpreset_get_all_content_items()` supplies the context-free list, which holds every
+offered preset that is not a template member. The second is not optional:
 `content_item_service::add_to_user_favourites()` resolves a starred id with `array_search()` over
 that list and, on failure, silently indexes `$items[0]` — an unrelated module.
 
@@ -349,10 +400,15 @@ The item that opens the preset chooser page uses id `-1`. That is not an arbitra
 `course_content_item_exporter` sets `legacyitem => (id == -1)` and the item template wraps its
 favourite star in `{{^legacyitem}}`, so `-1` is the one value that renders an item with no star.
 
-Chooser visibility is gated by `preset::is_live()` — a live archive exists **and** its content hash
-matches the recorded one — not by the `status` column. Two things follow: a preset can never be
-offered without a proven backup behind it, and a re-bake in flight does not pull a working preset out
-of the chooser.
+What is offered is decided by `preset::is_offered()`, from the release status alone: released presets
+to everyone, presets ready for review to holders of `mod/edpreset:reviewpresets` in the course
+(`local\access::can_review()`), drafts and archived presets to nobody. Both choosers, `copy.php` and
+the reorder dialogue's web service all ask it, so a link to a preset that has since been withdrawn
+stops working.
+
+`get_all_content_items()` includes the presets ready for review, for the same reason it includes the
+ones the course chooser leaves out: a reviewer can star one, and the star is resolved against this
+list.
 
 ### Curator form extension
 
@@ -364,14 +420,21 @@ Three core callbacks extend other modules' settings forms inside the template co
   silently drops an incompatible duplicate.
 * `mod_edpreset_coursemodule_validation()` re-checks the fields server-side, because a module can be
   created by web service or restore without the form ever being submitted.
-* `mod_edpreset_coursemodule_edit_post_actions()` writes the `edpreset_meta` row.
+* `mod_edpreset_coursemodule_edit_post_actions()` writes the `edpreset_meta` row. It also copies the
+  release status and the activity chooser choice straight onto the preset's `edpreset_item` row, if
+  there is one, rather than leaving them for the rescan the save queues: moving a preset to Draft or
+  Archived is how a curator withdraws it, and that should not wait for cron.
 
-The description is the standard rich text editor. It is typed `PARAM_RAW` on
-the form (anything narrower strips the markup the curator just wrote) and are rendered and cleaned
-exactly once, at bake time, via `format_text(…, ['noclean' => false])` — the point at which the text
+The description is the standard rich text editor. It is typed `PARAM_RAW` on the form (anything
+narrower strips the markup the curator just wrote) and is rendered and cleaned exactly once, when
+the preset is scanned, via `format_text(…, ['noclean' => false])` — the point at which the text
 crosses out of the template course and becomes readable by everyone who can add an activity.
 
-It carries its own format column, and the baker renders with the format that was stored rather
+The release status is a select offering the four statuses, and defaults to **Draft** for an activity
+that has no preset details yet. The server-side validation refuses anything else, since a web
+service call or a crafted post is not limited to the select's options.
+
+It carries its own format column, and the scan renders with the format that was stored rather
 than assuming HTML: a site running the plain textarea editor is still offered the whole format menu,
 so `FORMAT_HTML` is the norm rather than a guarantee.
 
@@ -382,73 +445,57 @@ on the site, not only by whoever can reach the template course.
 Emptiness is `html_is_blank()`, not `trim()`. A rich text editor that has been typed into and
 emptied again holds `<p></p>` or `<p><br></p>`, neither of which is an empty string.
 
-### The bake pipeline
+### Scanning the template course
 
-```
-rebuild → bake (backup) → scrub → validate (test restore) → promote to live
-```
+`local\baker::rebuild()` walks the template course's `modinfo`, skips section 0, hidden and delegated
+sections, skips subsections and modules without backup support, and upserts a preset row for every
+activity that has curator details. Presets whose exemplar has gone are deleted, along with any
+core/plugin favourite rows pointing at them.
 
-**1. Rebuild** (`local\baker::rebuild()`) walks the template course's `modinfo`, skips section 0,
-hidden and delegated sections, skips subsections and modules without backup support, and upserts a
-preset row for every activity that has curator details. Presets whose exemplar has gone are deleted,
-along with their file areas and any core/plugin favourite rows pointing at them.
+That is all a scan does. Nothing is backed up until a teacher asks for a copy, so a scan only
+describes what is there, and is cheap: the manage page's **Rescan** runs it inside the request.
 
-**2. Backup** (`local\backup_baker::bake()`) runs a `backup_controller` with
-`TYPE_1ACTIVITY / FORMAT_MOODLE / INTERACTIVE_NO / MODE_GENERAL`. `MODE_GENERAL` rather than
-`MODE_IMPORT` because `backup_helper::store_backup_file()` returns null for import mode, leaving no
-file to keep. Every user-data and site-specific setting (`users`, `role_assignments`, `logs`,
-`grade_histories`, `groups`, `comments`, `badges`, `calendarevents`, `contentbankcontent`,
-`legacyfiles`, …) is switched off, skipping any the site has locked. The result is size-checked
-against `maxbackupsize`, copied into the `presetunscrubbed` area, and the backup left in the
-exemplar's own module context is deleted so curators do not find stray archives on their activities.
-
-**3. Scrub** (`local\scrubber`) extracts the `.mbz`, applies each `local\scrub\rule`, and repacks into
-`presetstaging`. The archive is rewritten rather than the exemplar: nulling the exemplar's own
-columns around the backup call would briefly corrupt a live course, and would leave it corrupted if
-cron died mid-run.
-
-The only rule shipping today is `clear_dates`, which zeroes date fields so a copied activity does not
-arrive with last year's due date. Which fields count as dates comes from a **curated per-module map**,
-not from matching column names — a name heuristic was tried and rejected because it zeroed `assign`'s
-`sendnotifications` (a boolean) and `quiz`'s `timelimit` (a duration) while still missing `wiki`'s
-`editbegin`. Unknown modules get no date clearing at all; the admin can extend coverage through the
-`datefields` setting, and the manage page lists date-looking columns the map does not cover as
-advisory suggestions. Fields are set to `0`, not emptied, because module restore steps pass them
-straight to `apply_date_offset()` and expect an integer.
-
-Scrubbing is **fail-soft**: a rule that throws is caught individually, and any failure falls back to
-staging the untouched original. A preset with stale dates is useful; a preset that does not exist is
-not.
-
-**4. Validate** (`local\validator`) is what makes best-effort scrubbing safe. The staged archive is
-test-restored into a hidden sandbox course through *exactly the same code path a teacher's click
-takes*, rather than a parallel one. If the restore fails and the archive was scrubbed, the untouched
-original is tried instead; if that works it is published and the reason is recorded against the
-preset. So the correct behaviour per module is discovered automatically and no curator has to know
-which modules tolerate which rules.
-
-The sandbox (`local\sandbox`) is resolved **by shortname, not by a stored course id** — admins delete
-it from time to time because it looks like clutter, and a stored id would then point at nothing (or
-at whatever course later reused that id). It is wiped *before* each validation rather than after, so
-that debris from a crashed or killed run cannot contaminate the next one. The wipe also removes
-restore-created sections and calls `question_delete_course()`, without which a sandbox validating quiz
-presets nightly would accumulate question banks indefinitely.
-
-**5. Promote.** A proven archive is copied into `presetbackup`, and its content hash, size and
-validation time are recorded. A failed re-bake never removes a preset that already works: the
-previously validated archive stays in place and keeps serving.
+Drafts and archived presets are scanned like any other. Keeping their rows is what keeps their ids,
+and so the stars that point at them, through a spell out of circulation.
 
 ### Copying into a course
 
-`local\activity_copier::restore_into()` is the cross-course equivalent of core's `duplicate_module()`,
-which cannot be reused — its backup/restore core would work, but everything after the restore is
-hardcoded to the *source* course, so it silently fails when the target is a different one.
+```
+backup (as admin, import mode) → restore (as the teacher, import mode) → place → tidy
+```
+
+`local\activity_copier::copy_activity()` is the cross-course equivalent of core's
+`duplicate_module()`, and works the same way: an import-mode backup handed straight to an import-mode
+restore, with no archive in between. It cannot simply call it — everything `duplicate_module()` does
+after the restore is hardcoded to the *source* course, so it silently fails when the target is a
+different one.
+
+A copy is always of the exemplar as it is at that moment. There is no stored archive to fall out of
+step with it, which is why editing quiz questions, book chapters or a rubric reaches teachers at once,
+and why the [release status](#release-status) is what stands between a curator's work in progress and
+the teachers.
+
+**The backup runs as the site administrator.** An import-mode backup needs
+`moodle/backup:backuptargetimport` in the source course, which teachers do not hold for the template
+course — nor should they, since it would let them import anything from it through core's own import
+page. Core's recycle bin does the same thing for the same reason: `tool_recyclebin\course_bin::store_item()`
+backs an activity up as `get_admin()` from the request of whoever deleted it. It widens nothing here:
+by the time the backup runs, `copy.php` has already decided this is a preset the teacher may be
+offered, and an import-mode backup never carries user data — `backup_check::check_security()` forces
+the `users` setting off and locks it. The copier switches off the other course-level extras the
+site's import defaults might still include (groups, calendar events, badges, content bank, legacy
+files), and refuses with a clear message if those defaults leave activities out altogether.
+
+Import mode is also what keeps a copy cheap. The backup is written to a temp directory without being
+zipped, and it includes no file content: the restore re-links the files already in the file pool by
+content hash (`restore_dbops::send_files_to_pool()`), so a large SCORM or H5P package costs no more to
+copy than a small one. Measured on a development site, a backup takes about a third as long as the
+restore it feeds. The backup and restore logs are left in the backup temp directory, exactly as
+`duplicate_module()` leaves them, for an administrator to read when a copy fails; core's backup
+cleanup task removes them.
 
 The restore runs as the requesting user in `MODE_IMPORT` with `TARGET_CURRENT_ADDING`, which needs
-`moodle/restore:restoretargetimport` in the target course (editing teachers hold it by default). Note
-that the *backup* side has the opposite requirement, `moodle/backup:backuptargetimport` in the source
-course, which teachers do **not** hold for the template course — that is why archives are baked ahead
-of time by cron rather than produced on demand.
+`moodle/restore:restoretargetimport` in the target course (editing teachers hold it by default).
 
 After `execute_plan()` the copier:
 
@@ -458,15 +505,49 @@ After `execute_plan()` the copier:
   otherwise places it by matching the *exemplar's* section number;
 * clears `idnumber` (must be unique per course), `availability` (references template-course ids) and
   `completionexpected` (never the date the teacher wants);
+* clears the copy's dates (see below), *before* the calendar is refreshed so the events are built from
+  the cleared dates;
 * rebuilds the course cache and calls `course_module_update_calendar_events()`;
 * fires `course_module_created` by hand, because the restore subsystem does not — without it,
   completion, competencies and third-party observers never learn the activity exists;
 * renames the activity to the preset's default name *before* reading modinfo, since
-  `set_coursemodule_name()` purges and rebuilds the course cache;
+  `set_coursemodule_name()` purges and rebuilds the course cache.
 
 Teacher guidance embedded in the exemplar needs none of this: its tokens are in the exemplar's text
 and its blocks are in the activity's backup, so the restore brings both. `test_embedded_guidance_travels_with_a_copy()`
 pins that, since nothing in the copier would notice if it stopped being true.
+
+**A failed restore leaves nothing behind.** Nothing proves an exemplar restores before a teacher asks
+for it, so a restore that breaks part way breaks in their course. `remove_partial_restore()` finds the
+course module the restore had already created — the activity task records it as soon as it exists —
+and deletes it, with the recycle bin forced off for the length of the delete: a failed copy is not
+something the teacher deleted. A restore can stop before it has created the activity's own record,
+and `course_delete_module()` refuses to go on without one, so in that case the course module and its
+place in the section are removed directly.
+
+**A failed copy is recorded against the preset**, in `lasterror` and `timelasterror`, and shown on the
+manage page; the teacher is told only which preset could not be added. The next copy that works
+clears it. Both are written with `$DB->update_record()` rather than through the persistent, because
+this runs in a teacher's request and the persistent would stamp that teacher into `usermodified`,
+which the privacy provider declares as the curator who last saved the preset.
+
+#### Clearing dates
+
+`local\scrubber` runs its rules on the copy once it is in place — never on the exemplar, and never on
+the backup on its way through. The copy is already there, so nothing a rule does can stop it
+arriving. A rule that throws is caught individually and logged: a copy with a stale date is useful,
+and a copy that is reported as failed when it is sitting in the teacher's course is worse than either.
+
+The only rule shipping today is `clear_dates`, which zeroes date fields on the copy's instance row so
+it does not arrive with last year's due date. Which fields count as dates comes from a **curated
+per-module map**, not from matching column names — a name heuristic was tried and rejected because
+it zeroed `assign`'s `sendnotifications` (a boolean) and `quiz`'s `timelimit` (a duration) while still
+missing `wiki`'s `editbegin`. Unknown modules get no date clearing at all; the admin can extend
+coverage through the `datefields` setting, and the manage page shows the fields each preset's copies
+have cleared and lists date-looking columns the map does not cover as advisory suggestions. Fields are
+set to `0`, Moodle's own convention for "no date", and an admin-configured field that is not a column
+of the module is skipped. Only the instance row is touched: a module's other date-bearing tables are
+user and group overrides, which a copy never carries.
 
 `copy_many()` copies a batch sequentially. Nothing wraps a restore in a transaction — core does not
 either — so a preset that fails does not take the rest down with it; the caller gets both an `added`
@@ -503,36 +584,39 @@ failing the whole add for.
 
 | Task | Type | Schedule |
 | --- | --- | --- |
+| `rebuild_presets` | adhoc | queued by the observers, de-duplicated |
 | `reconcile_presets` | scheduled | 03:00 daily |
-| `bake_preset` | adhoc | queued per exemplar, de-duplicated |
-| `validate_preset` | adhoc | queued by a successful bake |
 
-The nightly reconcile is not redundant with the observers: editing quiz questions, book chapters or
-lesson pages fires module-specific events, not `course_module_updated`, so those changes would
-otherwise never reach a preset. A blanket nightly re-bake is simpler and more reliably correct than
-enumerating every content-changing event across every module, and it is cheap — Moodle's file storage
-deduplicates by content hash, so an unchanged exemplar produces no new stored file.
+Both only rescan (see [Scanning the template course](#scanning-the-template-course)). Content needs no
+task at all — every copy takes a fresh backup — so the nightly reconcile is just a safety net for the
+preset records, catching any change to the template course an observer missed.
 
 Observers (`db/events.php`) cover `course_module_created`, `course_module_updated`,
-`course_module_deleted`, `course_section_updated`, `grading_definition_created`,
-`grading_definition_updated` and `course_deleted`. All are declared `internal => false` so they run
-after the transaction commits — they queue adhoc tasks, which must not be queued from inside a
-transaction that might roll back. Every handler is cheap and non-throwing: they fire on activity edits
-site-wide, so the first thing each one does is compare a config value and give up. The grading
-observers exist because editing a rubric or marking guide does not fire `course_module_updated`.
+`course_module_deleted`, `course_section_updated` and `course_deleted`. All are declared
+`internal => false` so they run after the transaction commits — they queue adhoc tasks, which must
+not be queued from inside a transaction that might roll back. Every handler is cheap and
+non-throwing: they fire on activity edits site-wide, so the first thing each one does is compare a
+config value and give up.
+
+`course_module_created` also gives a duplicated exemplar a draft copy of the original's preset
+details (see [Release status](#release-status)). Core's duplicate fires nothing that names the
+original, so it is recognised by what `duplicate_module()` leaves behind: the copy directly after the
+original in the same section, of the same module, named with the original's name and core's "(copy)"
+suffix — the same string in the same language, since the observer runs in the request that did the
+duplicating. Getting this wrong either way is harmless, which is why a heuristic is good enough: a
+duplicate it misses simply has no preset details until the curator fills them in, and an activity it
+wrongly matches is given details as a draft, which is offered to nobody.
 
 `edpreset_meta` and `edpreset_item` rows are swept by the delete observers, because XMLDB foreign keys
 are not enforced by the database and nothing cascades them away.
 
 ### Concurrency and limits
 
-* **Pipeline lock** (`mod_edpreset` / `pipeline`, 120 s): serialises bakes and validations. They share
-  the sandbox course, and two concurrent validations would delete each other's activity mid-restore.
 * **Per-user copy lock** (`copy_<userid>`, no wait): taken once around a whole batch, so a reload or
   double-click cannot start a second restore run.
 * `access::MAX_PRESETS` (20) caps one request, so a hand-edited URL cannot occupy a PHP worker for an
   hour. `copy.php` also raises the time limit and memory limit.
-* `maxpresets` caps how many items the chooser is handed; `maxbackupsize` caps a single archive.
+* `maxpresets` caps how many items the chooser is handed.
 
 ### Access control
 
@@ -548,21 +632,18 @@ template out, and `copy.php` and `get_template_items` call `require_can_use_temp
 anything with one. The course's recorded template is read once by the chooser page and passed in,
 just as the one-template lock does.
 
+`local\access::can_review()` decides whether presets ready for review are offered too (see
+[Chooser integration](#chooser-integration)). It checks `mod/edpreset:reviewpresets` in the target
+course's context, read once per page or request and passed to whatever filters presets.
+
 Both `copy.php` and `chooser.php` call `require_sesskey()`. The chooser links are minted server-side
 per user, so carrying a sesskey costs nothing and closes CSRF on what is otherwise a state-changing
 GET.
 
 ### Files
 
-Archives live in three system-context file areas, keyed by preset id:
-
-| Area | Contents |
-| --- | --- |
-| `presetunscrubbed` | The untouched backup, kept as a fallback if a scrub rule breaks the restore. |
-| `presetstaging` | The candidate awaiting its test restore. |
-| `presetbackup` | The validated, live archive the chooser offers. |
-
-The plugin implements **no `pluginfile` callback**, so there is no URL that reaches any archive.
+The plugin stores no files and implements **no `pluginfile` callback**. Versions before 0.8.0 kept
+each preset's backup in three system-context file areas; the 0.8.0 upgrade deletes them.
 
 ### Progress reporting
 
@@ -571,8 +652,12 @@ The plugin implements **no `pluginfile` callback**, so there is no URL that reac
 which `redirect()` can no longer send a `Location` header and falls back to a scripted redirect with a
 "You should really redirect before you start page output" notice — a hard failure on a site with
 developer debugging turned into exceptions. So a fast copy stays completely silent and ends on a real
-303; a slow one prints the header, the standard restore progress bar, and finishes with a scripted
+303; a slow one prints the header, the standard progress bar, and finishes with a scripted
 redirect plus a continue button.
+
+The same reporter is handed to both the backup and the restore of every copy. Each plan opens its own
+top-level progress section, one after the other, which is why `copy.php` must not open a parent
+section around them: `core\progress\base` throws "parent progress would exceed max" on the second.
 
 ### Web services and user preferences
 
@@ -640,8 +725,8 @@ reference back to this plugin.
 ### Privacy
 
 `privacy\provider` implements the metadata, plugin, userlist and user-preference providers. The
-presets themselves hold nothing personal — they describe exemplar activities, and the stored backups
-are taken with user data excluded. What is covered is the starred presets (via the `core_favourites`
+presets themselves hold nothing personal — they describe exemplar activities, and are copied through
+backups that exclude user data. What is covered is the starred presets (via the `core_favourites`
 subsystem link, always in the user's own context), the collapsed-groups preference, which is
 exported as a count rather than as its raw list of hashes, and the curator authorship stamp on the
 two preset tables.
@@ -655,7 +740,7 @@ key that no metadata provider declares. Both tables are therefore declared with
 Two decisions about how that stamp is handled:
 
 * **It is held against the system context**, not the exemplar's module context. Presets are site
-  configuration — administered from an admin page, stored in system-context file areas — and a
+  configuration — administered from an admin page — and a
   stale `edpreset_item` row outlives the activity it was derived from until the next reconcile, so
   keying on the exemplar's context would leave rows that a deletion request could never reach.
 * **Deletion anonymises rather than deletes.** The rows are what the chooser offers every teacher;
@@ -663,11 +748,21 @@ Two decisions about how that stamp is handled:
   zero it holds before anyone has saved the row, and leaves the row standing. This is what
   `quizaccess_seb` does with the same stamp on its own settings and template tables.
 
+A copy failure recorded on a preset is written without touching `usermodified` (see [Copying into a
+course](#copying-into-a-course)), so a teacher whose copy failed is never recorded as its author. The
+message is the exception's, about the backup or restore, not about the teacher.
+
 ## Testing
 
-The plugin ships PHPUnit coverage for the access rules, the copier, the baker, the progress reporter,
-the external function, the form elements, the library functions, the privacy provider, the sandbox
-and the scrubber, plus a test data generator.
+The plugin ships PHPUnit coverage for the access rules, the copier, the scan, the observers, the
+release status, the progress reporter, the external functions, the form elements, the library
+functions, the privacy provider and the scrubber, plus a test data generator.
+
+The copier's tests copy for real - a genuine backup and restore - because that is the only thing
+that proves a copy works. `test_a_failed_restore_leaves_nothing_behind()` breaks a restore part way
+with `tests/fixtures/failing_restore_progress.php`, a progress reporter that throws once the target
+course holds a module: the restore calls its reporter at every step, so this fails it at the worst
+moment, just after the course module exists.
 
 ```
 vendor/bin/phpunit --testsuite mod_edpreset_testsuite
@@ -678,13 +773,12 @@ theme_snap's own renderer to check that the **Apply template** item is really in
 is the only automated guard on the theme patch described above. It skips itself where theme_snap is
 not installed, CI included - the plugin does not depend on the theme.
 
-Behat covers section templates in `tests/behat/section_templates.feature`. Two things about it are
-worth knowing before adding to it:
+Behat covers section templates in `tests/behat/section_templates.feature`, and who is offered what in
+`tests/behat/release_status.feature`. Two things about them are worth knowing before adding to them:
 
-* The background runs the **real** bake pipeline — a genuine backup of each exemplar and a test
-  restore into the sandbox — through the `the mod_edpreset presets have been baked` step. Anything
-  that actually adds a preset needs an archive that restores, and only the real thing is one. It is
-  slow for the same reason.
+* The background only scans the template course, through the `the mod_edpreset presets have been
+  scanned` step. That is all a preset needs: the scenario that adds one takes a real backup and
+  restore when it clicks.
 * The **drag gesture itself is not tested**. Core does not test activity reordering that way either:
   its one drag step, `behat_general::i_drag_and_i_drop_it_in()`, is documented as experimental, and
   core exercises reordering through keyboard steps on the move modal instead. The scenarios cover the

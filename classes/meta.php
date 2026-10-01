@@ -22,8 +22,13 @@ use core\persistent;
  * The teacher-facing details a curator records against an exemplar activity.
  *
  * The presence of one of these rows is what makes an activity a preset. Nothing in the template
- * course is scanned, baked or offered without one, so this is the source of truth and the
- * edpreset_item row is a derived copy that every rebuild rewrites.
+ * course is scanned or offered without one, so this is the source of truth and the edpreset_item
+ * row is a derived copy that every rebuild rewrites.
+ *
+ * Its release status is what decides who is offered the preset. A copy always takes the exemplar
+ * as it is at that moment, so the status is the curator's way to work on one without teachers
+ * picking up a half-finished edit: a released preset is reworked by duplicating it, which leaves
+ * the copy in draft (see copy_to_duplicate()), and swapping the two over when it is ready.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -32,6 +37,21 @@ use core\persistent;
 class meta extends persistent {
     /** @var string Table name. */
     public const TABLE = 'edpreset_meta';
+
+    /** @var string Being worked on. Offered to nobody. The default for new preset details. */
+    public const STATUS_DRAFT = 'draft';
+
+    /** @var string Ready for review. Offered only to holders of mod/edpreset:reviewpresets. */
+    public const STATUS_REVIEW = 'review';
+
+    /** @var string Offered to everyone who may add presets. */
+    public const STATUS_RELEASED = 'released';
+
+    /** @var string Retired. Offered to nobody, but kept - with its stars - in case it returns. */
+    public const STATUS_ARCHIVED = 'archived';
+
+    /** @var string[] Every release status, in the order a curator moves through them. */
+    public const STATUSES = [self::STATUS_DRAFT, self::STATUS_REVIEW, self::STATUS_RELEASED, self::STATUS_ARCHIVED];
 
     /** @var int Maximum length of the preset name, matching the column and the form's maxlength. */
     public const PRESETNAME_MAXLENGTH = 60;
@@ -60,10 +80,11 @@ class meta extends persistent {
             'cmid' => ['type' => PARAM_INT],
             'presetname' => ['type' => PARAM_TEXT],
             // Raw HTML as the curator typed it in the rich text editor. PARAM_RAW because the
-            // cleaning happens once, at bake time, via format_text(..., ['noclean' => false]) -
-            // the point at which the text leaves the template course.
+            // cleaning happens once, when the preset is scanned, via
+            // format_text(..., ['noclean' => false]) - the point at which the text leaves the
+            // template course.
             'description' => ['type' => PARAM_RAW],
-            // The format the description was typed in, which is what the baker renders it with.
+            // The format the description was typed in, which is what the scan renders it with.
             // FORMAT_HTML from the rich text editor, but not assumed to be: a site running the
             // plain textarea editor is still offered the whole format menu.
             'descriptionformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
@@ -72,6 +93,10 @@ class meta extends persistent {
             // The section of a teacher's course this preset is meant for, e.g. "Nau mai | Welcome".
             // Advisory only: it labels and filters the preset, and never restricts where it can go.
             'recommendedsection' => ['type' => PARAM_TEXT, 'default' => ''],
+            'status' => ['type' => PARAM_ALPHA, 'default' => self::STATUS_DRAFT, 'choices' => self::STATUSES],
+            // Whether the preset is also offered in the standard activity chooser. Every preset is
+            // on the preset chooser page regardless.
+            'showinchooser' => ['type' => PARAM_BOOL, 'default' => 0],
         ];
     }
 
@@ -107,6 +132,38 @@ class meta extends persistent {
         global $DB;
 
         $DB->delete_records(self::TABLE, ['cmid' => $cmid]);
+    }
+
+    /**
+     * Give a duplicated exemplar a draft copy of the original's preset details.
+     *
+     * Curators rework a released preset by duplicating it, so that teachers keep getting the
+     * released one until the copy is ready. Core's duplicate does not know about these details, and
+     * retyping them would be the price of doing the right thing, so the copy is given them here -
+     * always as a draft, so it is offered to nobody until the curator says otherwise.
+     *
+     * @param int $cmid The duplicate's course module id.
+     * @return self|null The new details, or null if the duplicate already had some of its own.
+     */
+    public function copy_to_duplicate(int $cmid): ?self {
+        if (self::exists_for_cm($cmid)) {
+            return null;
+        }
+
+        $copy = new self(0, (object)[
+            'cmid' => $cmid,
+            'presetname' => $this->get('presetname'),
+            'description' => $this->get('description'),
+            'descriptionformat' => $this->get('descriptionformat'),
+            'tags' => $this->get('tags'),
+            'defaultname' => $this->get('defaultname'),
+            'recommendedsection' => $this->get('recommendedsection'),
+            'showinchooser' => $this->get('showinchooser'),
+            'status' => self::STATUS_DRAFT,
+        ]);
+        $copy->create();
+
+        return $copy;
     }
 
     /**

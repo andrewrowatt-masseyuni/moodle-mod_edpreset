@@ -74,7 +74,8 @@ final class lib_test extends \advanced_testcase {
         $items = $service->get_content_items_for_user_in_course($teacher, $course);
 
         $ours = array_filter($items, fn($item) => $item->componentname === 'mod_edpreset');
-        // The priority-section presets, plus the placeholder that opens the preset chooser page.
+        // The presets marked for the activity chooser, plus the placeholder that opens the preset
+        // chooser page.
         $this->assertCount(count($presets) + 1, $ours);
     }
 
@@ -213,9 +214,13 @@ final class lib_test extends \advanced_testcase {
     }
 
     /**
-     * Only the priority section reaches the standard chooser; the rest reach the page.
+     * Only presets marked "Show in activity chooser" reach the standard chooser; every one reaches
+     * the page.
+     *
+     * The section a preset sits in plays no part, and a section template's member never reaches the
+     * standard chooser on its own, whatever its details say.
      */
-    public function test_only_priority_section_presets_reach_the_standard_chooser(): void {
+    public function test_only_presets_marked_for_the_activity_chooser_reach_it(): void {
         $this->resetAfterTest();
         $generator = $this->getDataGenerator();
         $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
@@ -224,13 +229,23 @@ final class lib_test extends \advanced_testcase {
         $course = $generator->create_course();
         $teacher = $generator->create_and_enrol($course, 'editingteacher');
 
-        $priority = $plugingenerator->create_preset([
-            'templatecourseid' => $templatecourse->id,
-            'sectionnum' => 1,
-        ]);
-        $onpage = $plugingenerator->create_preset([
+        // Marked, though not in section 1 - which used to be what decided it.
+        $marked = $plugingenerator->create_preset([
             'templatecourseid' => $templatecourse->id,
             'sectionnum' => 3,
+            'showinchooser' => 1,
+        ]);
+        // Not marked, though in section 1.
+        $onpage = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 1,
+            'showinchooser' => 0,
+        ]);
+        $member = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 4,
+            'templatename' => 'Weekly cycle',
+            'showinchooser' => 1,
         ]);
 
         $service = content_item_service_factory::get_content_item_service();
@@ -239,11 +254,15 @@ final class lib_test extends \advanced_testcase {
             fn($item) => $item->componentname === 'mod_edpreset'
         ), 'id');
 
-        $this->assertContains((int)$priority->get('id'), $ids);
+        $this->assertContains((int)$marked->get('id'), $ids);
         $this->assertNotContains((int)$onpage->get('id'), $ids);
+        $this->assertNotContains((int)$member->get('id'), $ids);
 
-        $pageids = array_map(fn($p) => (int)$p->get('id'), chooser::get_page_presets());
-        $this->assertSame([(int)$priority->get('id'), (int)$onpage->get('id')], $pageids);
+        $pageids = array_map(fn($p) => (int)$p->get('id'), chooser::get_page_presets(false));
+        $this->assertSame(
+            [(int)$marked->get('id'), (int)$onpage->get('id'), (int)$member->get('id')],
+            $pageids
+        );
     }
 
     /**
@@ -283,7 +302,7 @@ final class lib_test extends \advanced_testcase {
         // Presets on both sides of the split, so this covers the superset relationship too.
         $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 1]);
         $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 1]);
-        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 4]);
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'showinchooser' => 0]);
 
         $service = content_item_service_factory::get_content_item_service();
 
@@ -306,12 +325,12 @@ final class lib_test extends \advanced_testcase {
     }
 
     /**
-     * Only presets with a validated backup behind them are offered.
+     * Only released presets are offered to a teacher.
      *
-     * Visibility is gated on the live archive rather than the status field, so a preset that has
-     * never been baked, or whose archive has gone missing or been replaced, is simply not offered.
+     * The curator's release status is the whole gate: a draft is being worked on, a preset ready
+     * for review is offered only to reviewers, and an archived one has been retired.
      */
-    public function test_only_live_presets_are_offered(): void {
+    public function test_only_released_presets_are_offered(): void {
         $this->resetAfterTest();
         $generator = $this->getDataGenerator();
         $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
@@ -320,22 +339,76 @@ final class lib_test extends \advanced_testcase {
         $course = $generator->create_course();
         $teacher = $generator->create_and_enrol($course, 'editingteacher');
 
-        $live = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id]);
-        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'live' => false]);
+        $released = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id]);
+        foreach ([meta::STATUS_DRAFT, meta::STATUS_REVIEW, meta::STATUS_ARCHIVED] as $status) {
+            $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'status' => $status]);
+        }
 
-        // A preset whose recorded hash no longer matches its file must not be offered either.
-        $stale = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id]);
-        $stale->set('backupcontenthash', sha1('something else entirely'));
-        $stale->update();
-
-        $service = content_item_service_factory::get_content_item_service();
-        $ours = array_filter(
-            $service->get_content_items_for_user_in_course($teacher, $course),
-            fn($item) => $item->componentname === 'mod_edpreset' && !$item->legacyitem
-        );
+        $ours = $this->our_items($teacher, $course);
 
         $this->assertCount(1, $ours);
-        $this->assertSame((int)$live->get('id'), (int)reset($ours)->id);
+        $this->assertSame((int)$released->get('id'), (int)reset($ours)->id);
+    }
+
+    /**
+     * Someone who can review presets is offered those ready for review too, marked as such.
+     */
+    public function test_reviewers_are_offered_presets_in_review(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $course = $generator->create_course();
+        $reviewer = $generator->create_and_enrol($course, 'editingteacher');
+        assign_capability(
+            'mod/edpreset:reviewpresets',
+            CAP_ALLOW,
+            $DB->get_field('role', 'id', ['shortname' => 'editingteacher']),
+            \context_course::instance($course->id)
+        );
+
+        $released = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'title' => 'Released one']);
+        $inreview = $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'title' => 'Reviewed one',
+            'status' => meta::STATUS_REVIEW,
+        ]);
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'status' => meta::STATUS_DRAFT]);
+
+        $titles = [];
+        foreach ($this->our_items($reviewer, $course) as $item) {
+            $titles[(int)$item->id] = $item->title;
+        }
+
+        $this->assertSame(
+            [
+                (int)$released->get('id') => 'Released one',
+                (int)$inreview->get('id') => get_string('chooser:reviewtitle', 'mod_edpreset', 'Reviewed one'),
+            ],
+            $titles
+        );
+
+        // The context-free list carries them too, or a reviewer's star would land on something else.
+        $allids = array_map(fn($item) => $item->get_id(), chooser::get_all_content_items());
+        $this->assertContains((int)$inreview->get('id'), $allids);
+    }
+
+    /**
+     * The presets the standard chooser offers a user in a course, without the placeholder.
+     *
+     * @param \stdClass $user The user.
+     * @param \stdClass $course The course.
+     * @return \stdClass[] Exported content items.
+     */
+    protected function our_items(\stdClass $user, \stdClass $course): array {
+        $service = content_item_service_factory::get_content_item_service();
+
+        return array_values(array_filter(
+            $service->get_content_items_for_user_in_course($user, $course),
+            fn($item) => $item->componentname === 'mod_edpreset' && !$item->legacyitem
+        ));
     }
 
     /**

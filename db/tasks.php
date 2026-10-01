@@ -26,8 +26,8 @@ defined('MOODLE_INTERNAL') || die();
 
 $tasks = [
     [
-        // Runs overnight because it re-bakes every exemplar; the event observers keep things
-        // current during the day.
+        // A safety net for the event observers, which keep the preset records current during the
+        // day. Overnight because nothing depends on it running sooner.
         'classname' => 'mod_edpreset\task\reconcile_presets',
         'blocking' => 0,
         'minute' => 'R',

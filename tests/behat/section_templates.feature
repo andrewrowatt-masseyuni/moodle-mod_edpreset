@@ -34,7 +34,7 @@ Feature: Add a whole section of preset activities at once
     And the following "mod_edpreset > template courses" exist:
       | course |
       | TPL    |
-    And the mod_edpreset presets have been baked
+    And the mod_edpreset presets have been scanned
     And I log in as "teacher1"
 
   Scenario: A template section is offered as one card naming its activities and tags
@@ -79,7 +79,7 @@ Feature: Add a whole section of preset activities at once
     And the following "mod_edpreset > preset details" exist:
       | activity | presetname       | description            | tags       |
       | brief    | Assessment brief | The brief to hand out. | Assessment |
-    And the mod_edpreset presets have been baked
+    And the mod_edpreset presets have been scanned
     And I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
     When I open the preset chooser for course "C1" section "2"
@@ -100,7 +100,7 @@ Feature: Add a whole section of preset activities at once
       | brief    | Assessment brief | The brief to hand out. | Assessment |
     And the following config values are set as admin:
       | preventmixing | 0 | mod_edpreset |
-    And the mod_edpreset presets have been baked
+    And the mod_edpreset presets have been scanned
     And I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
     When I open the preset chooser for course "C1" section "2"
@@ -119,13 +119,13 @@ Feature: Add a whole section of preset activities at once
     And the following "mod_edpreset > preset details" exist:
       | activity | presetname       | description            | tags       |
       | brief    | Assessment brief | The brief to hand out. | Assessment |
-    And the mod_edpreset presets have been baked
+    And the mod_edpreset presets have been scanned
     And I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
     And the following "mod_edpreset > sections" exist:
       | course | section | name                      | summary                                     |
       | TPL    | 2       | Renamed cycle [Template]  | A prepare, engage and consolidate sequence. |
-    And the mod_edpreset presets have been baked
+    And the mod_edpreset presets have been scanned
     When I open the preset chooser for course "C1" section "2"
     Then I should not see "You cannot select this template"
     And "Add to course" "link" should exist in the "Assessment block" "mod_edpreset > Section template"

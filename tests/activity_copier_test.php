@@ -17,40 +17,26 @@
 namespace mod_edpreset;
 
 use mod_edpreset\local\activity_copier;
-use mod_edpreset\local\backup_baker;
 
 /**
- * Tests for the cross-course single-activity copy.
+ * Tests for copying a preset's exemplar into a course.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \mod_edpreset\local\activity_copier
- * @covers     \mod_edpreset\local\backup_baker
+ * @covers     \mod_edpreset\preset
  */
 final class activity_copier_test extends \advanced_testcase {
     /**
-     * Load the backup and restore APIs.
-     */
-    public static function setUpBeforeClass(): void {
-        global $CFG;
-        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
-        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-        parent::setUpBeforeClass();
-    }
-
-    /**
-     * Create a template course with one exemplar, and bake it into a live preset.
+     * Create a template course with one exemplar, and a released preset for it.
      *
      * @param string $modname The module to use as the exemplar.
      * @param array $moddata Extra module settings.
-     * @param callable|null $beforebake Called with the exemplar's course module before it is baked,
-     *     for anything that has to be in the archive.
      * @return array [$templatecourse, $preset, $exemplarcm]
      */
-    protected function bake_exemplar(string $modname = 'assign', array $moddata = [], ?callable $beforebake = null): array {
+    protected function exemplar(string $modname = 'assign', array $moddata = []): array {
         $generator = $this->getDataGenerator();
-        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
 
         $templatecourse = $generator->create_course(['numsections' => 2]);
         $module = $generator->create_module($modname, $moddata + [
@@ -63,45 +49,26 @@ final class activity_copier_test extends \advanced_testcase {
         set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
         set_config('enabled', 1, 'mod_edpreset');
 
-        $preset = $plugingenerator->create_preset([
-            'templatecourseid' => $templatecourse->id,
-            'templatecmid' => $exemplarcm->id,
-            'modname' => $modname,
-            'instanceid' => $module->id,
-            'contextid' => \context_module::instance($exemplarcm->id)->id,
-            'title' => 'Exemplar ' . $modname,
-            'live' => false,
-        ]);
-
-        if ($beforebake) {
-            $beforebake($exemplarcm);
-        }
-
-        // Bake for real, then promote the staged archive as the validator will later do.
-        $this->setAdminUser();
-        $staged = backup_baker::bake($preset);
-        $this->promote($preset, $staged);
+        $preset = $this->preset_for($exemplarcm, 'Exemplar ' . $modname);
 
         return [$templatecourse, $preset, $exemplarcm];
     }
 
     /**
-     * Bake several live presets out of one template course, named "Exemplar 1", "Exemplar 2", ...
+     * Create several released presets in one template course, named "Exemplar 1", "Exemplar 2", ...
      *
      * Pages rather than assignments: these tests are about how a batch is placed, and a page is the
      * cheapest thing to back up and restore several times over.
      *
-     * @param int $count How many presets to bake.
+     * @param int $count How many presets to create.
      * @return preset[] The presets, in name order.
      */
-    protected function bake_exemplars(int $count): array {
+    protected function exemplars(int $count): array {
         $generator = $this->getDataGenerator();
-        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
 
         $templatecourse = $generator->create_course(['numsections' => 2]);
         set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
         set_config('enabled', 1, 'mod_edpreset');
-        $this->setAdminUser();
 
         $presets = [];
         for ($i = 1; $i <= $count; $i++) {
@@ -111,87 +78,94 @@ final class activity_copier_test extends \advanced_testcase {
                 'name' => 'Exemplar ' . $i,
             ]);
             $cm = get_coursemodule_from_instance('page', $module->id, $templatecourse->id);
-
-            $preset = $plugingenerator->create_preset([
-                'templatecourseid' => $templatecourse->id,
-                'templatecmid' => $cm->id,
-                'modname' => 'page',
-                'instanceid' => $module->id,
-                'contextid' => \context_module::instance($cm->id)->id,
-                'title' => 'Exemplar ' . $i,
-                'live' => false,
-            ]);
-
-            $this->promote($preset, backup_baker::bake($preset));
-            $presets[] = $preset;
+            $presets[] = $this->preset_for($cm, 'Exemplar ' . $i);
         }
 
         return $presets;
     }
 
     /**
-     * Move a staged archive into the live area, as the validator does once it has proven it.
+     * A released preset record for an exemplar.
      *
-     * @param preset $preset The preset.
-     * @param \stored_file $staged The staged archive.
+     * @param \stdClass $cm The exemplar's course module.
+     * @param string $title The preset's title.
+     * @return preset
      */
-    protected function promote(preset $preset, \stored_file $staged): void {
-        // A re-bake replaces the live archive, so clear it first.
-        backup_baker::clear_area($preset, preset::FILEAREA_BACKUP);
-
-        $live = get_file_storage()->create_file_from_storedfile([
-            'contextid' => \context_system::instance()->id,
-            'component' => 'mod_edpreset',
-            'filearea' => preset::FILEAREA_BACKUP,
-            'itemid' => $preset->get('id'),
-            'filepath' => '/',
-            'filename' => 'preset_' . $preset->get('id') . '.mbz',
-        ], $staged);
-
-        $preset->set('backupcontenthash', $live->get_contenthash());
-        $preset->set('backupfilesize', $live->get_filesize());
-        $preset->set('status', preset::STATUS_READY);
-        $preset->update();
-
-        backup_baker::clear_area($preset, preset::FILEAREA_STAGING);
+    protected function preset_for(\stdClass $cm, string $title): preset {
+        return $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_preset([
+            'templatecourseid' => $cm->course,
+            'templatecmid' => $cm->id,
+            'modname' => $cm->modname,
+            'instanceid' => $cm->instance,
+            'contextid' => \context_module::instance($cm->id)->id,
+            'title' => $title,
+        ]);
     }
 
     /**
-     * A backup can be produced and staged, and it is not left behind in the template course.
+     * Nothing is left behind: no backup file on the exemplar and no backup temp directory.
+     *
+     * The backup never becomes a file at all - import mode writes a temp directory and the restore
+     * reads it - so the only thing that could be left is that directory. The backup and restore
+     * logs are deliberately left, exactly as duplicate_module() leaves them: they are what an
+     * administrator reads when a copy fails, and core's backup cleanup task removes them.
      */
-    public function test_bake_stages_an_archive(): void {
+    public function test_a_copy_leaves_no_backup_behind(): void {
         $this->resetAfterTest();
-        [$templatecourse, $preset, $exemplarcm] = $this->bake_exemplar();
+        [, $preset, $exemplarcm] = $this->exemplar();
 
-        $live = $preset->get_live_file();
-        $this->assertNotFalse($live);
-        $this->assertGreaterThan(0, $live->get_filesize());
-        $this->assertTrue($preset->is_live());
+        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
+        $this->setAdminUser();
 
-        // The backup lands in the exemplar's module context by default; it must not be left there.
-        $strays = get_file_storage()->get_area_files(
-            \context_module::instance($exemplarcm->id)->id,
-            'backup',
-            'activity',
-            0,
-            'itemid',
-            false
+        $before = $this->backup_temp_entries();
+        activity_copier::copy($preset, $course, 1);
+
+        $this->assertSame($before, $this->backup_temp_entries(), 'a backup temp directory was left behind');
+        $this->assertEmpty(
+            get_file_storage()->get_area_files(
+                \context_module::instance($exemplarcm->id)->id,
+                'backup',
+                'activity',
+                false,
+                'itemid',
+                false
+            ),
+            'a backup file was left attached to the exemplar'
         );
-        $this->assertEmpty($strays, 'a backup archive was left attached to the exemplar');
-        unset($templatecourse);
+    }
+
+    /**
+     * What is in the backup temp directory, other than logs.
+     *
+     * @return string[]
+     */
+    protected function backup_temp_entries(): array {
+        global $CFG;
+
+        if (!is_dir($CFG->backuptempdir)) {
+            return [];
+        }
+
+        $entries = array_values(array_filter(
+            array_diff(scandir($CFG->backuptempdir), ['.', '..']),
+            fn($entry) => !str_ends_with($entry, '.log')
+        ));
+        sort($entries);
+
+        return $entries;
     }
 
     /**
      * The whole point: a teacher with no access at all to the template course can still copy.
      *
-     * Backup in import mode needs moodle/backup:backuptargetimport in the SOURCE course, which a
-     * teacher does not have there; restore needs moodle/restore:restoretargetimport in the TARGET
-     * course, which an editing teacher does have. Baking ahead of time as an admin is what makes
-     * this asymmetry work.
+     * An import-mode backup needs moodle/backup:backuptargetimport in the SOURCE course, which a
+     * teacher does not have there; the restore needs moodle/restore:restoretargetimport in the
+     * TARGET course, which an editing teacher does have. Taking the backup as the site
+     * administrator is what makes this asymmetry work.
      */
     public function test_copy_as_teacher_with_no_access_to_template_course(): void {
         $this->resetAfterTest();
-        [$templatecourse, $preset] = $this->bake_exemplar();
+        [$templatecourse, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
@@ -200,6 +174,10 @@ final class activity_copier_test extends \advanced_testcase {
         $this->assertFalse(
             is_enrolled(\context_course::instance($templatecourse->id), $teacher),
             'sanity: the teacher must not be enrolled in the template course'
+        );
+        $this->assertFalse(
+            has_capability('moodle/backup:backuptargetimport', \context_course::instance($templatecourse->id), $teacher),
+            'sanity: the teacher must not be able to back up the template course'
         );
 
         $cm = activity_copier::copy($preset, $course, 2);
@@ -211,6 +189,71 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
+     * A copy is of the exemplar as it is now, not as it was when the preset was scanned.
+     */
+    public function test_copy_reflects_the_exemplar_as_it_is_now(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [, $preset, $exemplarcm] = $this->exemplar('page');
+
+        $DB->set_field('page', 'content', '<p>Edited after the scan.</p>', ['id' => $exemplarcm->instance]);
+        rebuild_course_cache($exemplarcm->course, true);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $cm = activity_copier::copy($preset, $course, 1);
+
+        $this->assertSame('<p>Edited after the scan.</p>', $DB->get_field('page', 'content', ['id' => $cm->instance]));
+    }
+
+    /**
+     * A preset whose exemplar has gone fails with a reason an administrator can act on.
+     */
+    public function test_copy_of_a_deleted_exemplar_fails(): void {
+        $this->resetAfterTest();
+        [, $preset, $exemplarcm] = $this->exemplar();
+
+        course_delete_module($exemplarcm->id);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('exemplarmissing', 'mod_edpreset'));
+        activity_copier::copy($preset, $course, 1);
+    }
+
+    /**
+     * A restore that breaks part way leaves nothing in the teacher's course.
+     *
+     * Nothing proves an exemplar restores before a teacher asks for it, so this is the only thing
+     * between a broken exemplar and a half-built activity in someone's course. The failure is
+     * injected through the progress reporter - see failing_restore_progress.
+     */
+    public function test_a_failed_restore_leaves_nothing_behind(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/mod/edpreset/tests/fixtures/failing_restore_progress.php');
+        $this->resetAfterTest();
+        [, $preset] = $this->exemplar('page');
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $progress = new \failing_restore_progress((int)$course->id);
+
+        try {
+            activity_copier::copy($preset, $course, 1, 0, $progress);
+            $this->fail('the injected failure did not stop the restore');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('error', $e->errorcode);
+        }
+
+        $this->assertSame(0, $DB->count_records('course_modules', ['course' => $course->id]));
+        $this->assertEmpty(get_fast_modinfo($course)->get_cms());
+    }
+
+    /**
      * A preset with a default activity name renames the copy.
      *
      * The rename has to happen before copy() reads modinfo: set_coursemodule_name() purges and
@@ -219,7 +262,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_default_activity_name_is_applied(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $preset->set('defaultname', 'Weekly reflection');
         $preset->update();
@@ -238,7 +281,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_blank_default_activity_name_is_ignored(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $preset->set('defaultname', '   ');
         $preset->update();
@@ -257,7 +300,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_lands_in_the_requested_section(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 5]);
         $this->setAdminUser();
@@ -272,7 +315,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_creates_a_missing_section(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 1]);
         $this->setAdminUser();
@@ -287,7 +330,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_respects_beforemod(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
         $existing = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
@@ -311,7 +354,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_many_lands_in_selection_order(): void {
         $this->resetAfterTest();
-        $presets = $this->bake_exemplars(3);
+        $presets = $this->exemplars(3);
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $this->setAdminUser();
@@ -335,7 +378,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_many_respects_beforemod(): void {
         $this->resetAfterTest();
-        $presets = $this->bake_exemplars(3);
+        $presets = $this->exemplars(3);
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
         $existing = $this->getDataGenerator()->create_module('page', ['course' => $course->id, 'section' => 1]);
@@ -358,11 +401,10 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_many_continues_past_a_failure(): void {
         $this->resetAfterTest();
-        $presets = $this->bake_exemplars(3);
+        $presets = $this->exemplars(3);
 
-        // Break the middle one, exactly as a re-bake in flight would: the file no longer matches
-        // the hash the record claims, so is_live() is false and copy() refuses it.
-        $presets[1]->set('backupcontenthash', sha1('a different archive entirely'));
+        // Point the middle one at an exemplar that does not exist.
+        $presets[1]->set('templatecmid', (int)$presets[1]->get('templatecmid') + 100000);
         $presets[1]->update();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
@@ -380,6 +422,55 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
+     * A failed copy is recorded against the preset for the manage page, as nobody but the copier.
+     *
+     * The record is written in a teacher's request, and must not stamp that teacher into
+     * usermodified: the privacy provider declares that column as the curator who last saved it.
+     */
+    public function test_a_failure_is_recorded_without_claiming_authorship(): void {
+        $this->resetAfterTest();
+        $presets = $this->exemplars(1);
+        $preset = $presets[0];
+
+        $preset->set('templatecmid', (int)$preset->get('templatecmid') + 100000);
+        $preset->update();
+        $curator = (int)preset::get_record(['id' => $preset->get('id')])->get('usermodified');
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $teacher = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
+        activity_copier::copy_many([$preset], $course, 1);
+        $this->assertDebuggingCalledCount(1);
+
+        $reloaded = preset::get_record(['id' => $preset->get('id')]);
+        $this->assertStringContainsString(get_string('exemplarmissing', 'mod_edpreset'), $reloaded->get('lasterror'));
+        $this->assertGreaterThan(0, (int)$reloaded->get('timelasterror'));
+        $this->assertSame($curator, (int)$reloaded->get('usermodified'));
+        $this->assertNotSame((int)$teacher->id, (int)$reloaded->get('usermodified'));
+    }
+
+    /**
+     * A copy that works clears the last failure, so the manage page shows only current problems.
+     */
+    public function test_a_success_clears_the_last_failure(): void {
+        $this->resetAfterTest();
+        [, $preset] = $this->exemplar('page');
+
+        $preset->record_copy_error('moodle_exception: something went wrong last week');
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $result = activity_copier::copy_many([$preset], $course, 1);
+        $this->assertCount(1, $result['added']);
+
+        $reloaded = preset::get_record(['id' => $preset->get('id')]);
+        $this->assertSame('', (string)$reloaded->get('lasterror'));
+        $this->assertSame(0, (int)$reloaded->get('timelasterror'));
+    }
+
+    /**
      * course_module_created must be fired by hand; the restore subsystem does not fire it.
      *
      * Without it, completion, competencies and third-party observers never learn the activity
@@ -387,7 +478,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_copy_fires_course_module_created(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
         $this->setAdminUser();
@@ -412,15 +503,13 @@ final class activity_copier_test extends \advanced_testcase {
         $this->resetAfterTest();
         $CFG->enableavailability = 1;
 
-        [, $preset, $exemplarcm] = $this->bake_exemplar('assign', ['idnumber' => 'TEMPLATE-001']);
+        [, $preset, $exemplarcm] = $this->exemplar('assign', ['idnumber' => 'TEMPLATE-001']);
 
-        // Give the exemplar an availability rule, then re-bake so the archive carries it.
         $DB->set_field('course_modules', 'availability', '{"op":"&","c":[],"showc":[]}', ['id' => $exemplarcm->id]);
         rebuild_course_cache($exemplarcm->course, true);
-        $this->setAdminUser();
-        $this->promote($preset, backup_baker::bake($preset));
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
         $cm = activity_copier::copy($preset, $course, 1);
 
         $record = $DB->get_record('course_modules', ['id' => $cm->id]);
@@ -455,21 +544,12 @@ final class activity_copier_test extends \advanced_testcase {
         $exemplarcm = get_coursemodule_from_instance('quiz', $quiz->id, $templatecourse->id);
         set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
         set_config('enabled', 1, 'mod_edpreset');
-
-        $preset = $generator->get_plugin_generator('mod_edpreset')->create_preset([
-            'templatecourseid' => $templatecourse->id,
-            'templatecmid' => $exemplarcm->id,
-            'modname' => 'quiz',
-            'instanceid' => $quiz->id,
-            'contextid' => \context_module::instance($exemplarcm->id)->id,
-            'title' => 'Exemplar quiz',
-            'live' => false,
-        ]);
-
-        $this->setAdminUser();
-        $this->promote($preset, backup_baker::bake($preset));
+        $preset = $this->preset_for($exemplarcm, 'Exemplar quiz');
 
         $course = $generator->create_course(['numsections' => 2]);
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+        $this->setUser($teacher);
+
         $cm = activity_copier::copy($preset, $course, 1);
 
         $slots = $DB->count_records('quiz_slots', ['quizid' => $cm->instance]);
@@ -477,26 +557,9 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
-     * A preset whose archive no longer matches its recorded hash is refused.
-     */
-    public function test_copy_refuses_a_stale_archive(): void {
-        $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
-
-        $preset->set('backupcontenthash', sha1('a different archive entirely'));
-        $preset->update();
-
-        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
-        $this->setAdminUser();
-
-        $this->expectException(\moodle_exception::class);
-        activity_copier::copy($preset, $course, 1);
-    }
-
-    /**
-     * The notes in a course, in the order they appear in their section.
+     * The modules in a course, in the order they appear in their section.
      *
-     * @param stdClass $course The course.
+     * @param \stdClass $course The course.
      * @param int $sectionnum The section to look in.
      * @return \cm_info[]
      */
@@ -516,7 +579,7 @@ final class activity_copier_test extends \advanced_testcase {
      */
     public function test_a_copy_adds_one_activity(): void {
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        [, $preset] = $this->exemplar();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $this->setAdminUser();
@@ -532,8 +595,8 @@ final class activity_copier_test extends \advanced_testcase {
      * Guidance embedded in the exemplar arrives with the copy, still using the same site preset.
      *
      * Nothing in the copier does this: the token is in the exemplar's description, and
-     * local_edguidance's blocks ride along in the activity's backup. This pins that the bake and
-     * copy path really does carry them, which is what lets this plugin know nothing about guidance.
+     * local_edguidance's blocks ride along in the activity's backup. This pins that the copy path
+     * really does carry them, which is what lets this plugin know nothing about guidance.
      */
     public function test_embedded_guidance_travels_with_a_copy(): void {
         global $DB;
@@ -545,18 +608,16 @@ final class activity_copier_test extends \advanced_testcase {
         $this->resetAfterTest();
         $key = \local_edguidance\token::new_key();
 
-        [, $preset] = $this->bake_exemplar(
+        [, $preset, $exemplarcm] = $this->exemplar(
             'assign',
-            ['intro' => '<p>Exemplar.</p>' . \local_edguidance\token::html($key)],
-            function (\stdClass $exemplarcm) use ($key): void {
-                $this->getDataGenerator()->get_plugin_generator('local_edguidance')->create_block([
-                    'cmid' => $exemplarcm->id,
-                    'embedkey' => $key,
-                    'presetslot' => 3,
-                    'introorder' => 1,
-                ]);
-            }
+            ['intro' => '<p>Exemplar.</p>' . \local_edguidance\token::html($key)]
         );
+        $this->getDataGenerator()->get_plugin_generator('local_edguidance')->create_block([
+            'cmid' => $exemplarcm->id,
+            'embedkey' => $key,
+            'presetslot' => 3,
+            'introorder' => 1,
+        ]);
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $this->setAdminUser();

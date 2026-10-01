@@ -98,17 +98,14 @@ class behat_mod_edpreset extends behat_base {
     }
 
     /**
-     * Bake every preset, as cron would.
+     * Scan the template course, as the rebuild queued by editing it would.
      *
-     * Deliberately runs the real pipeline - a genuine backup of each exemplar, then a test restore
-     * into the sandbox - rather than faking an archive. Anything that actually adds a preset to a
-     * course needs an archive that restores, and only the real thing is one. It is slow for the
-     * same reason.
+     * That is all a preset needs before it can be added: the copy backs the exemplar up itself.
      *
-     * @Given /^the mod_edpreset presets have been baked$/
+     * @Given /^the mod_edpreset presets have been scanned$/
      */
-    public function the_mod_edpreset_presets_have_been_baked() {
-        \behat_util::get_data_generator()->get_plugin_generator('mod_edpreset')->run_pipeline();
+    public function the_mod_edpreset_presets_have_been_scanned() {
+        \behat_util::get_data_generator()->get_plugin_generator('mod_edpreset')->scan();
     }
 
     /**

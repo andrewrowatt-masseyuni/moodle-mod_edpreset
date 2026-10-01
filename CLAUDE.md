@@ -65,7 +65,7 @@ docker exec moodle405_mod_edpreset-webserver-1 vendor/bin/phpunit --testsuite mo
 docker exec moodle405_mod_edpreset-webserver-1 vendor/bin/phpunit mod/edpreset/tests/lib_test.php
 docker exec moodle405_mod_edpreset-webserver-1 vendor/bin/phpunit --filter test_supports mod/edpreset/tests/lib_test.php
 
-# Behat — whole plugin (slow: the background runs the real bake pipeline)
+# Behat — whole plugin
 docker exec -u www-data moodle405_mod_edpreset-webserver-1 \
   php admin/tool/behat/cli/run.php --tags=@mod_edpreset --format progress
 
@@ -136,41 +136,42 @@ every activity-chooser content item to come from a `mod_*` component. So `edpres
 whether presets are offered at all. Do not "fix" any of these — README's *Plugin shape* section
 explains each.
 
-### Pipeline
+### Scan and copy
 
-```
-rebuild → bake (backup) → scrub (clear dates) → validate (test restore in sandbox) → promote to live
-```
+Nothing is stored between copies. There are two moving parts:
 
-Driven by [classes/local/baker.php](classes/local/baker.php) (rebuild/orchestration),
-[backup_baker.php](classes/local/backup_baker.php),
-[scrubber.php](classes/local/scrubber.php) +
-[scrub/](classes/local/scrub/) rules,
-[validator.php](classes/local/validator.php) and
-[sandbox.php](classes/local/sandbox.php). Entered from
-[classes/task/](classes/task/) (nightly `reconcile_presets`, adhoc `bake_preset` /
-`validate_preset`) and from [classes/observer.php](classes/observer.php).
+* **Scan** — [classes/local/baker.php](classes/local/baker.php) `rebuild()` rewrites the
+  `edpreset_item` records from the template course. Entered from the manage page's Rescan (inline),
+  the adhoc `rebuild_presets` the [observers](classes/observer.php) queue, and the nightly
+  `reconcile_presets`. It backs nothing up.
+* **Copy** — [classes/local/activity_copier.php](classes/local/activity_copier.php)
+  `copy_activity()`: an import-mode backup of the exemplar **as the site admin**, straight into an
+  import-mode restore as the teacher, then placement and tidying. The
+  [scrubber](classes/local/scrubber.php) and its [rules](classes/local/scrub/) (date clearing) run on
+  the *restored copy*, before its calendar is refreshed. A restore that fails part way has its debris removed; the failure is
+  recorded on the preset for the manage page.
 
-Two invariants worth holding in mind when touching this: chooser visibility is gated by
-`preset::is_live()` (a live archive whose content hash matches the record), **not** by the `status`
-column — so a preset is never offered without a proven backup, and a re-bake in flight never pulls a
-working preset out of the chooser. And a failed re-bake never removes a preset that already works.
+Two invariants worth holding in mind when touching this: what is offered is decided by
+`preset::is_offered()` from the curator's **release status** alone (released → everyone; review →
+holders of `mod/edpreset:reviewpresets` in the target course; draft/archived → nobody), and every
+entry point - both choosers, `copy.php`, `get_template_items` - asks it. And a copy is always of the
+exemplar as it is now, so the release status is the only thing between a curator's work in progress
+and teachers: README *Release status* explains the duplicate-then-swap workflow it relies on.
 
 ### Data model
 
 | Table | Role |
 | --- | --- |
-| `edpreset_meta` ([classes/meta.php](classes/meta.php)) | Curator input from the exemplar's own settings form. **Source of truth** — no row means not a preset. Raw markdown as typed. |
-| `edpreset_item` ([classes/preset.php](classes/preset.php), a `core\persistent`) | Derived; rewritten by every rebuild. Cleaned HTML, chooser metadata, pipeline status, archive fingerprints. **Upserted on `templatecmid`**, never delete+reinsert — favourites key on the preset id. |
+| `edpreset_meta` ([classes/meta.php](classes/meta.php)) | Curator input from the exemplar's own settings form. **Source of truth** — no row means not a preset. Raw text as typed, plus the release status. |
+| `edpreset_item` ([classes/preset.php](classes/preset.php), a `core\persistent`) | Derived; rewritten by every rebuild. Cleaned HTML, chooser metadata, the release status (also written straight through by the settings form's post actions), and the last copy failure. **Upserted on `templatecmid`**, never delete+reinsert — favourites key on the preset id. |
 | `edpreset` | Stub. Never written to. |
 
 Section templates have **no table**: a template is a view over the `edpreset_item` rows sharing a
 `sectionnum` ([section_template.php](classes/local/section_template.php)), flagged by a
 non-empty `templatename`.
 
-Archives live in three system-context file areas keyed by preset id (`presetunscrubbed`,
-`presetstaging`, `presetbackup`). The plugin implements **no `pluginfile` callback** — there is no
-URL that reaches an archive. Keep it that way.
+The plugin stores no files and implements **no `pluginfile` callback**; the curator's description
+editor relies on that (`maxfiles => 0`). Keep it that way.
 
 ### Request flow
 
@@ -183,7 +184,8 @@ URL that reaches an archive. Keep it that way.
   — the single copy handler for both entry points. Takes a preset list **or** a template, plus an
   optional explicit order. Deliberately does not end on the new activity's settings form.
 * [manage.php](manage.php) → [classes/output/manage_page.php](classes/output/manage_page.php)
-  — admin view of the pipeline: rescan, re-bake one, clear cached archives.
+  — admin list of presets with their release status, the dates their copies clear and the last copy
+  failure; Rescan runs the scan inline.
 * [classes/local/access.php](classes/local/access.php) — `require_can_copy_into()` is
   the **single** access gate shared by the chooser page, the copy handler and the tests. Route new
   entry points through it rather than re-checking capabilities inline.
@@ -196,16 +198,20 @@ URL that reaches an archive. Keep it that way.
 * **`$plugin->supported` is pinned to `[405, 405]`** because the plugin depends on the legacy
   `get_course_content_items` callback that core is migrating to the hook API. Do not widen it
   without verifying that callback still exists and is still dispatched.
-* Curator markdown fields are `PARAM_RAW` on the form and are rendered and cleaned **exactly once**,
-  at bake time, with `format_text(…, ['noclean' => false])`. Persistent properties holding that
-  already-cleaned HTML (`description`, `sectionsummary`) are `PARAM_RAW` and must
-  never be re-cleaned or escaped downstream.
+* Curator rich text fields are `PARAM_RAW` on the form and are rendered and cleaned **exactly once**,
+  when the preset is scanned, with `format_text(…, ['noclean' => false])`. Persistent properties
+  holding that already-cleaned HTML (`description`, `sectionsummary`) are `PARAM_RAW` and must never
+  be re-cleaned or escaped downstream.
 * Every form element added by `mod_edpreset_coursemodule_standard_elements()` must keep its
   `edpreset_` prefix — HTML_QuickForm silently drops an element clashing with the `name`/`intro`/
   `tags` that `standard_coursemodule_elements()` already added.
 * `chooser.php` and `copy.php` both `require_sesskey()`; links are minted server-side per user.
 * Observers must stay cheap and non-throwing (they fire on activity edits site-wide) and are declared
-  `internal => false` so adhoc tasks are queued after the transaction commits.
+  `internal => false` so adhoc tasks are queued after the transaction commits. `course_module_created`
+  also recognises core's Duplicate and gives the copy a draft copy of the preset details.
+* Anything written to `edpreset_item` from a teacher's request (the copy failure) goes through
+  `$DB` directly, not the persistent: `update()` would stamp the teacher into `usermodified`, which
+  the privacy provider declares as curator authorship.
 * No `backup/` directory and `FEATURE_BACKUP_MOODLE2 => false` — the plugin *uses* backup/restore,
   it does not implement it for itself.
 * Bump `$plugin->version` in [version.php](version.php) with every `db/` change, and

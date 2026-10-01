@@ -23,10 +23,14 @@ use mod_edpreset\preset;
  * A whole section of the template course, offered as one addable set.
  *
  * Deliberately not a persistent, and there is no edpreset_template table. A section template is a
- * view over the preset rows that share a section: every member is an ordinary baked preset, so the
- * bake, scrub and validate pipeline needed no changes at all to support this. The two section-level
- * values a card needs - the stripped name and the summary - are denormalised onto every member row
- * by the baker, exactly as the section name already was in the category column.
+ * view over the preset rows that share a section: every member is an ordinary preset, copied the
+ * same way as any other. The section-level values a card needs - the stripped name, the summary and
+ * the restriction - are denormalised onto every member row by the scan, exactly as the section name
+ * already was in the category column.
+ *
+ * Members are offered by their own release status, so a template shows each user the members they
+ * may have: a draft activity being added to a released template is simply absent until it is
+ * released.
  *
  * The identity of a template is its section number in the template course, not its name: two
  * sections could strip to the same name, and sectionnum is already stored and indexed.
@@ -211,6 +215,20 @@ class section_template {
     }
 
     /**
+     * Whether any member is offered only because the user can review presets.
+     *
+     * @return bool
+     */
+    public function has_members_in_review(): bool {
+        foreach ($this->members as $member) {
+            if ($member->is_in_review()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * The card's icon: the icon of the first activity in the section.
      *
      * Deliberately not a generic "stack" glyph. What a teacher recognises a template by is what it
@@ -257,7 +275,8 @@ class section_template {
     /**
      * Group a list of presets into the templates they belong to.
      *
-     * Presets that are not template members are ignored, so this can be handed the whole live list.
+     * Presets that are not template members are ignored, so this can be handed the whole offered
+     * list.
      *
      * @param preset[] $presets Presets in sortorder, as the chooser fetches them.
      * @return self[] Keyed by section number, in the order the sections were met.
@@ -282,13 +301,14 @@ class section_template {
     /**
      * The template a section holds, if it is one and has anything to offer.
      *
-     * Deliberately not routed through the chooser's live list: that is capped by the maxpresets
+     * Deliberately not routed through the chooser's offered list: that is capped by the maxpresets
      * setting, which is a limit on what one page may render rather than on what a template contains.
      *
      * @param int $sectionnum Section number in the template course.
-     * @return self|null Null if that section is not a template, or has no live members.
+     * @param bool $canreview Whether to include members that are ready for review.
+     * @return self|null Null if that section is not a template, or has no members on offer.
      */
-    public static function for_section(int $sectionnum): ?self {
+    public static function for_section(int $sectionnum, bool $canreview): ?self {
         $candidates = preset::get_records(
             [
                 'templatecourseid' => template::get_courseid(),
@@ -301,7 +321,7 @@ class section_template {
 
         $members = [];
         foreach ($candidates as $candidate) {
-            if ($candidate->is_template_member() && $candidate->is_live()) {
+            if ($candidate->is_template_member() && $candidate->is_offered($canreview)) {
                 $members[] = $candidate;
             }
         }
@@ -312,10 +332,10 @@ class section_template {
     /**
      * Whether the template course still holds a template of this name.
      *
-     * Deliberately does NOT require the template's members to be live. "Still exists" has to mean
-     * the curator has not deleted or renamed the section, not "is offerable this minute": a template
-     * mid-rebake momentarily has no live members, and treating that as gone would let a course that
-     * had settled on it slip its lock for good over a few minutes of cron.
+     * Deliberately does NOT look at the members' release status. "Still exists" has to mean the
+     * curator has not deleted or renamed the section, not "is offered this minute": a template whose
+     * members are all back in draft while the curator reworks them is still the template a course
+     * settled on, and treating it as gone would let that course slip its lock for good.
      *
      * @param string $name The template name, as recorded against a course.
      * @return bool

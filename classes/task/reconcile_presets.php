@@ -21,13 +21,12 @@ use mod_edpreset\local\baker;
 use mod_edpreset\local\template;
 
 /**
- * Nightly safety net: rescan the template course and re-bake everything.
+ * Nightly safety net: rescan the template course.
  *
- * Not redundant with the event observers. Editing quiz questions, book chapters or lesson pages
- * fires module-specific events, not course_module_updated, so those changes would otherwise never
- * reach a preset. A blanket nightly re-bake is simpler and more reliably correct than trying to
- * enumerate every content-changing event across every module, and it is cheap: Moodle's file
- * storage deduplicates by content hash, so an unchanged exemplar produces no new stored file.
+ * Content needs no help - every copy takes a fresh backup of the exemplar, so a teacher always gets
+ * the current version. This only catches the preset records up with any change to the template
+ * course an event observer missed, such as a module moved by something that fires no event. It is
+ * cheap: a rescan only rewrites the records.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -49,9 +48,8 @@ class reconcile_presets extends scheduled_task {
         $result = baker::rebuild();
 
         mtrace(sprintf(
-            'mod_edpreset: %d exemplars scanned, %d bakes queued, %d presets removed.',
+            'mod_edpreset: %d exemplars scanned, %d presets removed.',
             $result['scanned'],
-            $result['queued'],
             $result['removed']
         ));
     }

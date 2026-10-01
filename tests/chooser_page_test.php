@@ -255,6 +255,58 @@ final class chooser_page_test extends \advanced_testcase {
     }
 
     /**
+     * Each user sees the presets and template members the release status offers them.
+     *
+     * A teacher sees only released ones. Someone who can review presets also sees those ready for
+     * review, badged so they can tell them apart. Nobody sees a draft - including as a member of a
+     * template that is otherwise released.
+     */
+    public function test_release_status_decides_what_each_user_sees(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $templatecourse = $plugingenerator->create_template_course();
+
+        foreach ([meta::STATUS_RELEASED, meta::STATUS_REVIEW, meta::STATUS_DRAFT, meta::STATUS_ARCHIVED] as $status) {
+            $plugingenerator->create_preset([
+                'templatecourseid' => $templatecourse->id,
+                'title' => ucfirst($status) . ' page',
+                'status' => $status,
+            ]);
+            $plugingenerator->create_preset([
+                'templatecourseid' => $templatecourse->id,
+                'sectionnum' => 3,
+                'templatename' => 'Induction',
+                'title' => ucfirst($status) . ' member',
+                'status' => $status,
+            ]);
+        }
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+        $cards = $this->cards_by_title($this->export(false, $course));
+        $this->assertSame(['Released page', 'Induction'], array_keys($cards));
+        $this->assertFalse($cards['Released page']->inreview);
+        $this->assertSame(1, $cards['Induction']->count);
+        $this->assertFalse($cards['Induction']->inreview);
+
+        $reviewer = $this->getDataGenerator()->create_and_enrol($course, 'teacher');
+        assign_capability(
+            'mod/edpreset:reviewpresets',
+            CAP_ALLOW,
+            $DB->get_field('role', 'id', ['shortname' => 'teacher']),
+            \context_course::instance($course->id)
+        );
+        $this->setUser($reviewer);
+        $cards = $this->cards_by_title($this->export(false, $course));
+        $this->assertSame(['Released page', 'Review page', 'Induction'], array_keys($cards));
+        $this->assertTrue($cards['Review page']->inreview);
+        $this->assertSame(2, $cards['Induction']->count);
+        $this->assertTrue($cards['Induction']->inreview);
+    }
+
+    /**
      * An ordinary section's summary is shown under its group heading, and only there.
      */
     public function test_section_summary_is_shown_under_its_group(): void {

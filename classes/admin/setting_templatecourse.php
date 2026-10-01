@@ -61,16 +61,6 @@ class setting_templatecourse extends admin_setting_configtext {
             return get_string('settings:templatecourseid_notfound', 'mod_edpreset', $courseid);
         }
 
-        // The sandbox is wiped before every validation restore, so pointing the template course at
-        // it would silently destroy the curated exemplars.
-        $sandboxshortname = get_config('mod_edpreset', 'sandboxshortname');
-        if ($sandboxshortname) {
-            $shortname = $DB->get_field('course', 'shortname', ['id' => $courseid]);
-            if ($shortname === $sandboxshortname) {
-                return get_string('settings:templatecourseid_notsandbox', 'mod_edpreset');
-            }
-        }
-
         return true;
     }
 

@@ -63,6 +63,7 @@ require_sesskey();
 
 $coursecontext = context_course::instance($course->id);
 access::require_can_copy_into($course, $sectionnum);
+$canreview = access::can_review($course);
 
 // Everything is loaded and checked before any of it is restored, so a bad id fails with nothing yet
 // committed rather than half way through a batch.
@@ -70,7 +71,7 @@ $template = null;
 $presets = [];
 
 if ($templatesection) {
-    $template = section_template::for_section($templatesection);
+    $template = section_template::for_section($templatesection, $canreview);
     if (!$template) {
         throw new moodle_exception('invalidpreset', 'mod_edpreset');
     }
@@ -91,8 +92,10 @@ if ($templatesection) {
     }
 } else {
     foreach (access::clean_presets($presetids) as $presetid) {
+        // The release status is checked here as well as in the choosers: a link to a preset the
+        // curator has since withdrawn, or one this user was never offered, must not still work.
         $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
-        if (!$preset || !$preset->is_live()) {
+        if (!$preset || !$preset->is_offered($canreview)) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
         $presets[] = $preset;

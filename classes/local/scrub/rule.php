@@ -17,16 +17,16 @@
 namespace mod_edpreset\local\scrub;
 
 /**
- * One transformation applied to an extracted backup before it is published.
+ * One tidy-up applied to a freshly copied activity.
  *
- * Rules exist because a backup taken from a curated exemplar carries things that should not follow
- * it into a teacher's course. Only clearing dates ships today, but the shape is deliberate: the
- * other candidates (completion criteria that reference sibling activities, grade category
- * assignments, group and grouping references, competency links) are all the same operation on a
- * different set of elements, and should not each require reworking the scrubber.
+ * Rules exist because an exemplar carries things that should not follow it into a teacher's course.
+ * Only clearing dates ships today, but the shape is deliberate: the other candidates (completion
+ * criteria that reference sibling activities, grade category assignments, group and grouping
+ * references, competency links) are all the same operation on a different set of fields, and
+ * should not each require reworking the scrubber.
  *
- * A rule may be wrong without being dangerous: every scrubbed archive is test-restored before it
- * is published, and an archive that a rule has broken is replaced by the unscrubbed original.
+ * A rule runs on the copy after it has been restored, so a wrong rule can leave a copy oddly set up
+ * but can never stop it arriving.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -34,7 +34,7 @@ namespace mod_edpreset\local\scrub;
  */
 interface rule {
     /**
-     * A short machine-readable name, recorded against the preset so a curator can see what ran.
+     * A short machine-readable name, for debugging output.
      *
      * @return string
      */
@@ -43,18 +43,17 @@ interface rule {
     /**
      * Whether this rule has anything to do for the given module.
      *
-     * @param string $modname The exemplar's module name.
+     * @param string $modname The module name.
      * @return bool
      */
     public function applies_to(string $modname): bool;
 
     /**
-     * Apply the rule to an extracted backup.
+     * Apply the rule to a freshly copied activity.
      *
-     * @param string $basepath Absolute path of the extracted archive.
-     * @param string $modname The exemplar's module name.
-     * @param int $cmid The exemplar's course module id, which names the activity directory.
-     * @return string[] What was changed, for display on the manage page. Empty if nothing changed.
+     * @param string $modname The copy's module name.
+     * @param int $instanceid The copy's instance id.
+     * @return string[] What was changed. Empty if nothing changed.
      */
-    public function apply(string $basepath, string $modname, int $cmid): array;
+    public function apply(string $modname, int $instanceid): array;
 }

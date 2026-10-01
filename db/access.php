@@ -41,4 +41,15 @@ $capabilities = [
         ],
         'clonepermissionsfrom' => 'moodle/course:manageactivities',
     ],
+
+    // Lets a user see and add presets whose curator has marked them "Ready for review", alongside
+    // the released ones everyone sees. Checked in the target course's context, so it can be granted
+    // through a site-wide role or through a role in particular courses.
+    'mod/edpreset:reviewpresets' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'manager' => CAP_ALLOW,
+        ],
+    ],
 ];

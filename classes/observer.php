@@ -16,9 +16,11 @@
 
 namespace mod_edpreset;
 
+use cm_info;
 use core\event\base;
 use mod_edpreset\local\baker;
 use mod_edpreset\local\template;
+use Throwable;
 
 /**
  * Keeps presets current as the template course is edited.
@@ -41,9 +43,64 @@ class observer {
         if (!self::concerns_template_course($event)) {
             return;
         }
-        // A new activity has no preset row yet, so the whole course is rescanned rather than baked
-        // directly. The rescan is cheap; it only queues work.
+
+        self::copy_details_to_duplicate((int)$event->courseid, (int)$event->objectid);
+
+        // A new activity has no preset row yet, so the whole course is rescanned.
         baker::queue_rebuild();
+    }
+
+    /**
+     * Give an activity the curator has just duplicated a draft copy of the original's preset details.
+     *
+     * Core's duplicate fires nothing that names the original, so it is recognised by what
+     * duplicate_module() leaves behind: the copy directly after the original in the same section,
+     * of the same module, named with the original's name and core's "(copy)" suffix - the same
+     * string in the same language, since this runs in the request that did the duplicating.
+     *
+     * Getting this wrong either way is harmless, which is why a heuristic is good enough. A duplicate
+     * it misses simply has no preset details until the curator fills them in, as any new activity
+     * would; an activity it wrongly matches is given details as a draft, which is offered to nobody.
+     *
+     * @param int $courseid The template course.
+     * @param int $cmid The new activity.
+     */
+    protected static function copy_details_to_duplicate(int $courseid, int $cmid): void {
+        try {
+            $modinfo = get_fast_modinfo($courseid);
+            $cm = $modinfo->get_cm($cmid);
+            $original = self::previous_in_section($cm);
+            if (!$original || $original->modname !== $cm->modname) {
+                return;
+            }
+
+            if ($cm->name !== get_string('duplicatedmodule', 'moodle', $original->name)) {
+                return;
+            }
+
+            meta::get_for_cm((int)$original->id)?->copy_to_duplicate($cmid);
+        } catch (Throwable $e) {
+            // Every observer here must stay non-throwing; at worst the curator types the details in.
+            debugging('mod_edpreset: could not copy preset details to a duplicate: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+    }
+
+    /**
+     * The activity immediately before another in its section.
+     *
+     * @param cm_info $cm The activity.
+     * @return cm_info|null Null if it is the first in its section.
+     */
+    protected static function previous_in_section(cm_info $cm): ?cm_info {
+        $modinfo = $cm->get_modinfo();
+        $sequence = array_map('intval', $modinfo->sections[$cm->sectionnum] ?? []);
+
+        $position = array_search((int)$cm->id, $sequence, true);
+        if (!$position) {
+            return null;
+        }
+
+        return $modinfo->get_cm($sequence[$position - 1]);
     }
 
     /**
@@ -55,8 +112,8 @@ class observer {
         if (!self::concerns_template_course($event)) {
             return;
         }
-        // Rescan rather than bake directly: the edit may have renamed it, hidden it or moved it to
-        // another section, all of which change the preset's metadata as well as its archive.
+        // The copy itself needs nothing - every copy takes a fresh backup - but the edit may have
+        // hidden the exemplar or moved it to another section, which changes the preset's record.
         baker::queue_rebuild();
     }
 
@@ -90,35 +147,7 @@ class observer {
             return;
         }
         // Usually a rename, which changes the category shown against every preset in that section.
-        // The rescan refreshes metadata without touching any archive.
         baker::queue_rebuild();
-    }
-
-    /**
-     * A grading form was created or changed.
-     *
-     * Editing a rubric or marking guide does not fire course_module_updated, so without this an
-     * exemplar's grading form could change without its archive being refreshed until the nightly
-     * reconcile.
-     *
-     * @param base $event The grading definition event.
-     */
-    public static function grading_definition_changed(base $event): void {
-        if (!template::is_configured()) {
-            return;
-        }
-
-        $context = $event->get_context();
-        if ($context->contextlevel !== CONTEXT_MODULE) {
-            return;
-        }
-
-        $cm = get_coursemodule_from_id('', $context->instanceid, 0, false, IGNORE_MISSING);
-        if (!$cm || !template::is_template_course((int)$cm->course)) {
-            return;
-        }
-
-        baker::mark_stale((int)$cm->id);
     }
 
     /**
