@@ -75,11 +75,6 @@ final class baker_test extends \advanced_testcase {
                 'presetname' => $name,
                 // HTML, as the rich text editor on the settings form writes it.
                 'description' => "<p>Use <em>$name</em> when you want to.</p>",
-                // Only one exemplar carries guidance, so the tests can tell the rendered and the
-                // absent cases apart.
-                'teacherguidance' => $name === 'Reflective journal'
-                    ? '<p>Set the <strong>due date</strong> first.</p>'
-                    : '',
                 'tags' => $tags,
             ]);
         }
@@ -234,7 +229,6 @@ final class baker_test extends \advanced_testcase {
         $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata((int)$module->cmid, [
             'presetname' => 'Risky page',
             'description' => '<p>Safe enough.</p><script>alert(1)</script>',
-            'teacherguidance' => '<p>Also safe.</p><script>alert(2)</script>',
         ]);
 
         baker::rebuild();
@@ -242,7 +236,6 @@ final class baker_test extends \advanced_testcase {
         $risky = preset::get_record(['title' => 'Risky page']);
         $this->assertStringContainsString('Safe enough.', $risky->get('description'));
         $this->assertStringNotContainsString('<script>', $risky->get('description'));
-        $this->assertStringNotContainsString('<script>', $risky->get('teacherguidance'));
         // The chooser's info panel is built from the description, so it is cleaned by the same pass.
         $this->assertStringNotContainsString('<script>', $risky->get('help'));
     }
@@ -264,8 +257,6 @@ final class baker_test extends \advanced_testcase {
             'presetname' => 'Legacy page',
             'description' => 'Use *this* when you want to.',
             'descriptionformat' => FORMAT_MARKDOWN,
-            'teacherguidance' => 'Set the **due date** first.',
-            'teacherguidanceformat' => FORMAT_MARKDOWN,
         ]);
 
         baker::rebuild();
@@ -273,41 +264,6 @@ final class baker_test extends \advanced_testcase {
         $legacy = preset::get_record(['title' => 'Legacy page']);
         $this->assertStringContainsString('<em>this</em>', $legacy->get('description'));
         $this->assertStringNotContainsString('*this*', $legacy->get('description'));
-        $this->assertStringContainsString('<strong>due date</strong>', $legacy->get('teacherguidance'));
-        $this->assertStringNotContainsString('**due date**', $legacy->get('teacherguidance'));
-    }
-
-    /**
-     * Guidance is rendered like the description, and stays empty rather than becoming an empty
-     * paragraph when the curator left it blank.
-     *
-     * mod_ednote and emit_note() both treat "has guidance" as a simple emptiness test, so an
-     * empty string that format_text() had wrapped in <p></p> would make every preset emit a note.
-     * The rich text editor makes the second case here the likely one: an editor that has been typed
-     * into and emptied again submits "<p></p>", not "".
-     */
-    public function test_guidance_is_rendered_and_stays_empty_when_unset(): void {
-        $this->resetAfterTest();
-        $course = $this->make_template_course();
-
-        $module = $this->getDataGenerator()->create_module('page', [
-            'course' => $course->id, 'section' => 1, 'name' => 'Emptied page',
-        ]);
-        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_metadata((int)$module->cmid, [
-            'presetname' => 'Emptied page',
-            'teacherguidance' => '<p><br></p>',
-        ]);
-
-        baker::rebuild();
-
-        $journal = preset::get_record(['title' => 'Reflective journal']);
-        $this->assertStringContainsString('<strong>due date</strong>', $journal->get('teacherguidance'));
-
-        $discussion = preset::get_record(['title' => 'Discussion starter']);
-        $this->assertSame('', $discussion->get('teacherguidance'));
-
-        $emptied = preset::get_record(['title' => 'Emptied page']);
-        $this->assertSame('', $emptied->get('teacherguidance'));
     }
 
     /**

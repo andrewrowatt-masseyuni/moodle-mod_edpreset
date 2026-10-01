@@ -137,14 +137,14 @@
 }
 
 /*
- * The description and the guidance are written in the standard rich text editor, so a curator can
- * put a picture, a table or a heading in one where the old markdown textarea made that unlikely. The
+ * The description is written in the standard rich text editor, so a curator can put a picture, a
+ * table or a heading in it where the old markdown textarea made that unlikely. The
  * cards are a fixed-width grid, so anything with an intrinsic width has to be told to fit: without
  * this a single wide image or table widens its whole grid column and every card in the row with it.
  *
  * The height cap above already handles length; this is only about width.
  */
-:is(.edpreset-chooser .edpreset-card-description, .edpreset-chooser .edpreset-card-guidance-body) {
+.edpreset-chooser .edpreset-card-description {
     overflow-wrap: anywhere;
 
     img {
@@ -163,32 +163,6 @@
         font-size: 1rem;
         font-weight: 500;
     }
-}
-
-.edpreset-chooser .edpreset-card-guidance {
-    font-size: 0.875rem;
-}
-
-.edpreset-chooser .edpreset-card-guidance > summary {
-    cursor: pointer;
-
-    /* To make mod_ednote */
-    font-weight: 500;
-    font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #12545f;
-}
-
-.edpreset-chooser .edpreset-card-guidance-body {
-    /* Matches the description's cap so one long note cannot stretch the card past its neighbours. */
-    max-height: 7.5rem;
-    margin-top: 0.25rem;
-    overflow-y: auto;
-}
-
-.edpreset-chooser .edpreset-card-guidance-body > :last-child {
-    margin-bottom: 0;
 }
 
 .edpreset-chooser .edpreset-tags {

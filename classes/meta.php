@@ -64,12 +64,6 @@ class meta extends persistent {
             // FORMAT_HTML from the rich text editor, but not assumed to be: a site running the
             // plain textarea editor is still offered the whole format menu.
             'descriptionformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
-            // Raw HTML too, cleaned at bake time for the same reason. Optional, unlike description:
-            // a preset with nothing useful to tell the teacher emits no note at all. Stored as ''
-            // rather than the empty paragraph the editor leaves behind, because "has guidance" is a
-            // plain emptiness test everywhere downstream.
-            'teacherguidance' => ['type' => PARAM_RAW, 'default' => ''],
-            'teacherguidanceformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
         ];

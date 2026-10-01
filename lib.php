@@ -159,14 +159,13 @@ function edpreset_get_form_fieldmap(): array {
     return [
         'edpreset_presetname' => 'presetname',
         'edpreset_description' => 'presetdescription',
-        'edpreset_teacherguidance' => 'presetteacherguidance',
         'edpreset_tags' => 'presettags',
         'edpreset_defaultname' => 'presetdefaultname',
     ];
 }
 
 /**
- * The options the curator's two rich text fields are created with.
+ * The options the curator's rich text field is created with.
  *
  * maxfiles is 0, which is also the element's own default, but it is stated because it is
  * load-bearing rather than incidental: this plugin implements no pluginfile callback by design, so
@@ -187,7 +186,7 @@ function edpreset_get_editor_options(int $courseid): array {
 }
 
 /**
- * Unpack the value of one of the rich text fields.
+ * Unpack the value of a rich text field.
  *
  * An editor element submits text, format and itemid as an array, but these callbacks are also
  * reached with a plain string - a web service call, a restore, or a caller assembling the module
@@ -289,17 +288,6 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             ['rows' => 5],
             $editoroptions
         ),
-        'edpreset_teacherguidance' => $mform->createElement(
-            'editor',
-            'edpreset_teacherguidance',
-            get_string('presetteacherguidance', 'mod_edpreset')
-            . \html_writer::span(
-                get_string('presetteacherguidance_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
-            ),
-            ['rows' => 8],
-            $editoroptions
-        ),
         'edpreset_tags' => $mform->createElement(
             'text',
             'edpreset_tags',
@@ -364,8 +352,6 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     // keys when it is created, so only [text] is left to declare, and setType() on the element name
     // is how core does that for every other editor on the site.
     $mform->setType('edpreset_description', PARAM_RAW);
-    // The editor's HTML too, and cleaned at the same point, for the same reason.
-    $mform->setType('edpreset_teacherguidance', PARAM_RAW);
     $mform->setType('edpreset_tags', PARAM_TEXT);
     $mform->setType('edpreset_defaultname', PARAM_TEXT);
 
@@ -388,10 +374,6 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         $mform->setDefault('edpreset_description', [
             'text' => $meta->get('description'),
             'format' => (int)$meta->get('descriptionformat'),
-        ]);
-        $mform->setDefault('edpreset_teacherguidance', [
-            'text' => $meta->get('teacherguidance'),
-            'format' => (int)$meta->get('teacherguidanceformat'),
         ]);
         $mform->setDefault('edpreset_tags', $meta->get('tags'));
         $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
@@ -472,17 +454,11 @@ function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
     $meta = \mod_edpreset\meta::get_for_cm($cmid) ?? new \mod_edpreset\meta();
 
     [$description, $descriptionformat] = edpreset_unpack_editor($moduleinfo->edpreset_description ?? '');
-    [$guidance, $guidanceformat] = edpreset_unpack_editor($moduleinfo->edpreset_teacherguidance ?? '');
 
     $meta->set('cmid', $cmid);
     $meta->set('presetname', trim((string)$moduleinfo->edpreset_presetname));
     $meta->set('description', trim($description));
     $meta->set('descriptionformat', $descriptionformat);
-    // Normalised to '' here rather than stored as the "<p></p>" an emptied editor submits, because
-    // "has guidance" is a plain emptiness test in the baker, in the copier's emit_note() and in
-    // mod_ednote. An empty paragraph would make every preset emit an empty teacher note.
-    $meta->set('teacherguidance', html_is_blank($guidance) ? '' : trim($guidance));
-    $meta->set('teacherguidanceformat', $guidanceformat);
     $meta->set('tags', \mod_edpreset\meta::normalise_tags((string)($moduleinfo->edpreset_tags ?? '')));
     $meta->set('defaultname', trim((string)($moduleinfo->edpreset_defaultname ?? '')));
 

@@ -77,7 +77,7 @@ let searchTerm = '';
 const isFiltering = () => searchTerm !== '' || activeTags.size > 0;
 
 /**
- * How many activities the target section already holds, teacher notes excluded.
+ * How many activities the target section already holds.
  *
  * Sent with the page rather than fetched, so that adding a template to an empty section - the common
  * case, and the one where no dialogue is wanted - costs no round trip at all.

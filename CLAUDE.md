@@ -16,12 +16,14 @@ Consequences:
 
 * Commit plugin work from inside this directory. The outer repo is upstream Moodle core — never
   commit plugin changes there, and never commit `mod/edpreset` into it (it shows there as an
-  untracked directory, as do the other locally-installed plugins: `mod/ednote`, `mod/questionnaire`,
-  `local/codechecker`, `local/moodlecheck`, `theme/snap`).
+  untracked directory, as do the other locally-installed plugins: `local/edguidance`,
+  `filter/edguidance`, `lib/editor/tiny/plugins/edguidance`, `mod/ednote` (retired),
+  `mod/questionnaire`, `local/codechecker`, `local/moodlecheck`, `theme/snap`).
 * Editing Moodle core files is almost never the answer. When core behaviour looks wrong, read the
   core source to understand it and work around it in the plugin.
-* `mod/ednote` is a **soft, optional** companion (teacher notes). There is deliberately no
-  `$plugin->dependencies` entry; `mod_edpreset` must install and work without it.
+* Teacher guidance belongs to `local_edguidance` and is embedded in the exemplar's own text; it
+  travels into copies inside the activity backup, so this plugin has no guidance code at all. Do not
+  add any back - see README *Related plugins*.
 
 [README.md](README.md) is the plugin's design record — it documents not
 just what the code does but *why each non-obvious decision was made*, with the failure mode that
@@ -196,7 +198,7 @@ URL that reaches an archive. Keep it that way.
   without verifying that callback still exists and is still dispatched.
 * Curator markdown fields are `PARAM_RAW` on the form and are rendered and cleaned **exactly once**,
   at bake time, with `format_text(…, ['noclean' => false])`. Persistent properties holding that
-  already-cleaned HTML (`description`, `teacherguidance`, `templatesummary`) are `PARAM_RAW` and must
+  already-cleaned HTML (`description`, `templatesummary`) are `PARAM_RAW` and must
   never be re-cleaned or escaped downstream.
 * Every form element added by `mod_edpreset_coursemodule_standard_elements()` must keep its
   `edpreset_` prefix — HTML_QuickForm silently drops an element clashing with the `name`/`intro`/

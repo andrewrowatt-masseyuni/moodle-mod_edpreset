@@ -28,10 +28,6 @@
     Only the course's own activities can be dragged. The template's activities are fixed in the order
     its curator arranged them, and act purely as the positions to drop between.
 
-    Teacher notes are deliberately absent from both lists. A note belongs immediately above the one
-    activity it describes, and letting it be dragged away from that activity would only produce
-    orphans, so mod_edpreset re-attaches each note when it writes the final order.
-
     Every item carries data-token, which is what mod_edpreset/reorder reads back: p<presetid> for an
     activity the template will add, c<cmid> for one already in the course. The token, not the column
     an item happens to be sitting in, is what says where it came from.

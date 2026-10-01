@@ -18,7 +18,6 @@ namespace mod_edpreset\output;
 
 use core\output\renderer_base;
 use core\output\templatable;
-use mod_edpreset\local\activity_copier;
 use mod_edpreset\local\chooser;
 use mod_edpreset\local\coursedefault;
 use mod_edpreset\local\section_template;
@@ -219,10 +218,6 @@ class chooser_page implements renderable, templatable {
     /**
      * How many activities the target section already holds.
      *
-     * Teacher notes do not count. They are chrome that travels with the activity they describe, so a
-     * section holding one activity and its note is still a section holding one activity - and asking
-     * the teacher to reorder that would be noise.
-     *
      * @return int
      */
     protected function count_section_activities(): int {
@@ -231,7 +226,7 @@ class chooser_page implements renderable, templatable {
         $count = 0;
         foreach ($modinfo->sections[$this->sectionnum] ?? [] as $cmid) {
             $cm = $modinfo->get_cm($cmid);
-            if ($cm->deletioninprogress || $cm->modname === activity_copier::NOTE_MODNAME) {
+            if ($cm->deletioninprogress) {
                 continue;
             }
             $count++;
@@ -379,17 +374,12 @@ class chooser_page implements renderable, templatable {
     protected function export_card(preset $preset, array $favourites): stdClass {
         $presetid = (int)$preset->get('id');
         $description = (string)$preset->get('description');
-        $guidance = (string)$preset->get('teacherguidance');
         $tags = meta::split_tags((string)$preset->get('tags'));
 
         $card = new stdClass();
         $card->presetid = $presetid;
         $card->title = $preset->get('title');
         $card->description = $description;
-        // Already cleaned at bake time, so the template renders it unescaped - same contract as
-        // description. Collapsed behind a disclosure so long guidance does not distort the grid.
-        $card->teacherguidance = $guidance;
-        $card->hasguidance = $guidance !== '';
         $card->icon = $preset->get_icon_html();
         $card->modname = $preset->get('modname');
         // The human-readable activity type, e.g. "Assignment" for mod_assign. Same source core
@@ -408,7 +398,6 @@ class chooser_page implements renderable, templatable {
             trim(
                 $card->title
                 . ' ' . html_to_text($description, 0, false)
-                . ' ' . html_to_text($guidance, 0, false)
                 . ' ' . implode(' ', $tags)
             )
         );

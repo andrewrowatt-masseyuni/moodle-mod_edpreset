@@ -40,31 +40,15 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
-     * Skip the calling test unless mod_ednote is installed.
-     *
-     * mod_edpreset deliberately declares no dependency on mod_ednote: a preset's guidance becomes a
-     * teacher note if that plugin happens to be there, and is simply not shown if it is not. So the
-     * plugin is routinely run - including by its own CI, which checks out this repository alone -
-     * on a site where mod_ednote does not exist, and the tests that assert a note was created have
-     * nothing to assert about.
-     *
-     * Only those tests skip. The ones asserting that no note appears are still worth running: that
-     * is the behaviour a site without mod_ednote actually gets.
-     */
-    protected function skip_without_ednote(): void {
-        if (!\core_component::get_component_directory('mod_ednote')) {
-            $this->markTestSkipped('mod_ednote is not installed, so a preset\'s guidance produces no note.');
-        }
-    }
-
-    /**
      * Create a template course with one exemplar, and bake it into a live preset.
      *
      * @param string $modname The module to use as the exemplar.
      * @param array $moddata Extra module settings.
+     * @param callable|null $beforebake Called with the exemplar's course module before it is baked,
+     *     for anything that has to be in the archive.
      * @return array [$templatecourse, $preset, $exemplarcm]
      */
-    protected function bake_exemplar(string $modname = 'assign', array $moddata = []): array {
+    protected function bake_exemplar(string $modname = 'assign', array $moddata = [], ?callable $beforebake = null): array {
         $generator = $this->getDataGenerator();
         $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
 
@@ -88,6 +72,10 @@ final class activity_copier_test extends \advanced_testcase {
             'title' => 'Exemplar ' . $modname,
             'live' => false,
         ]);
+
+        if ($beforebake) {
+            $beforebake($exemplarcm);
+        }
 
         // Bake for real, then promote the staged archive as the validator will later do.
         $this->setAdminUser();
@@ -524,158 +512,61 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
-     * A preset with guidance drops a teacher note in above the activity.
+     * A copy adds exactly one activity: guidance no longer arrives as a separate module.
      */
-    public function test_guidance_emits_a_note_above_the_activity(): void {
-        $this->skip_without_ednote();
+    public function test_a_copy_adds_one_activity(): void {
         $this->resetAfterTest();
         [, $preset] = $this->bake_exemplar();
-
-        $preset->set('teacherguidance', '<p>Set the due date first.</p>');
-        $preset->update();
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $this->setAdminUser();
 
         $cm = activity_copier::copy($preset, $course, 1);
-
-        $modules = $this->section_modules($course, 1);
-        $this->assertCount(2, $modules);
-        $this->assertSame('ednote', $modules[0]->modname, 'the note belongs above the activity');
-        $this->assertSame((int)$cm->id, (int)$modules[1]->id);
-
-        // Linked to the preset rather than carrying a copy, so later edits reach it...
-        $note = \mod_ednote\guidance::for_cm((int)$course->id, (int)$modules[0]->id);
-        $this->assertSame((int)$preset->get('id'), $note->presetid);
-        $this->assertStringContainsString('Set the due date first.', $note->content);
-
-        // ...but a snapshot is stored too, for the day mod_edpreset or the preset is not there.
-        $this->assertStringContainsString(
-            'Set the due date first.',
-            $this->note_record($modules[0])->intro
-        );
-    }
-
-    /**
-     * The note is a normal visible activity, hidden from students by capability instead.
-     */
-    public function test_the_emitted_note_is_not_a_hidden_activity(): void {
-        $this->skip_without_ednote();
-        $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
-
-        $preset->set('teacherguidance', '<p>Guidance.</p>');
-        $preset->update();
-
-        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
-        $this->setAdminUser();
-
-        activity_copier::copy($preset, $course, 1);
-
-        $note = $this->section_modules($course, 1)[0];
-        $this->assertSame('ednote', $note->modname);
-        $this->assertEquals(1, $note->visible);
-
-        $student = $this->getDataGenerator()->create_and_enrol($course, 'student');
-        $this->assertFalse(get_fast_modinfo($course, $student->id)->get_cm($note->id)->uservisible);
-    }
-
-    /**
-     * A preset with no guidance copies exactly as before.
-     */
-    public function test_no_guidance_emits_no_note(): void {
-        $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
-
-        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
-        $this->setAdminUser();
-
-        activity_copier::copy($preset, $course, 1);
 
         $modules = $this->section_modules($course, 1);
         $this->assertCount(1, $modules);
-        $this->assertSame('assign', $modules[0]->modname);
+        $this->assertSame((int)$cm->id, (int)$modules[0]->id);
     }
 
     /**
-     * Guidance that is only whitespace is treated as none at all.
-     */
-    public function test_blank_guidance_emits_no_note(): void {
-        $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
-
-        $preset->set('teacherguidance', "   \n  ");
-        $preset->update();
-
-        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
-        $this->setAdminUser();
-
-        activity_copier::copy($preset, $course, 1);
-
-        $this->assertCount(1, $this->section_modules($course, 1));
-    }
-
-    /**
-     * Without mod_ednote the copy still works; it just arrives without its note.
+     * Guidance embedded in the exemplar arrives with the copy, still using the same site preset.
      *
-     * This is what lets mod_edpreset declare no dependency on mod_ednote. Deliberately NOT skipped
-     * when mod_ednote is absent - that is the case it is about, and on a site without the plugin it
-     * stops being a simulation and becomes the real thing.
-     *
-     * Hiding the module rather than deleting its row keeps the test honest on a site that does have
-     * mod_ednote: emit_note() has to decline for a module that is installed but switched off as well
-     * as for one that was never installed, and both go through the same guard.
+     * Nothing in the copier does this: the token is in the exemplar's description, and
+     * local_edguidance's blocks ride along in the activity's backup. This pins that the bake and
+     * copy path really does carry them, which is what lets this plugin know nothing about guidance.
      */
-    public function test_copy_still_works_when_ednote_is_unavailable(): void {
+    public function test_embedded_guidance_travels_with_a_copy(): void {
         global $DB;
 
+        if (!\core_component::get_component_directory('local_edguidance')) {
+            $this->markTestSkipped('local_edguidance is not installed.');
+        }
+
         $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
+        $key = \local_edguidance\token::new_key();
 
-        $preset->set('teacherguidance', '<p>Guidance.</p>');
-        $preset->update();
-
-        $DB->set_field('modules', 'visible', 0, ['name' => 'ednote']);
+        [, $preset] = $this->bake_exemplar(
+            'assign',
+            ['intro' => '<p>Exemplar.</p>' . \local_edguidance\token::html($key)],
+            function (\stdClass $exemplarcm) use ($key): void {
+                $this->getDataGenerator()->get_plugin_generator('local_edguidance')->create_block([
+                    'cmid' => $exemplarcm->id,
+                    'embedkey' => $key,
+                    'presetslot' => 3,
+                    'introorder' => 1,
+                ]);
+            }
+        );
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
         $this->setAdminUser();
 
         $cm = activity_copier::copy($preset, $course, 1);
 
-        $this->assertSame('assign', $cm->modname);
-        $this->assertCount(1, $this->section_modules($course, 1));
-    }
-
-    /**
-     * Validating a preset must not leave notes behind in the sandbox course.
-     *
-     * The validator shares restore_into() rather than copy(), which is the only thing keeping the
-     * two apart - so this asserts the note is emitted by the outer call and not the inner one.
-     */
-    public function test_restore_into_alone_emits_no_note(): void {
-        $this->resetAfterTest();
-        [, $preset] = $this->bake_exemplar();
-
-        $preset->set('teacherguidance', '<p>Guidance.</p>');
-        $preset->update();
-
-        $course = $this->getDataGenerator()->create_course(['numsections' => 3]);
-        $this->setAdminUser();
-
-        activity_copier::restore_into($preset->get_live_file(), $course, 1);
-
-        $this->assertCount(1, $this->section_modules($course, 1));
-    }
-
-    /**
-     * The stored note record behind a course module.
-     *
-     * @param \cm_info $cm The note's course module.
-     * @return \stdClass
-     */
-    protected function note_record(\cm_info $cm): \stdClass {
-        global $DB;
-
-        return $DB->get_record('ednote', ['id' => $cm->instance], '*', MUST_EXIST);
+        $this->assertStringContainsString($key, $DB->get_field('assign', 'intro', ['id' => $cm->instance]));
+        $block = $DB->get_record('local_edguidance', ['cmid' => $cm->id, 'embedkey' => $key], '*', MUST_EXIST);
+        $this->assertSame((int)$course->id, (int)$block->courseid);
+        $this->assertSame(3, (int)$block->presetslot);
+        $this->assertSame(1, (int)$block->introorder);
     }
 }

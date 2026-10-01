@@ -138,11 +138,6 @@ class mod_edpreset_generator extends testing_module_generator {
             // a test overriding the text should be able to see which format it is overriding.
             'description' => '<p>Description of test preset ' . $counter . '</p>',
             'descriptionformat' => FORMAT_HTML,
-            // Deliberately empty by default, like defaultname: guidance is optional, and a
-            // non-empty value makes every copy emit a teacher note. Only the tests about that
-            // should opt in.
-            'teacherguidance' => '',
-            'teacherguidanceformat' => FORMAT_HTML,
             'tags' => '',
             // Deliberately empty by default: a non-empty value renames every copied activity, and
             // that should only happen in the tests that are about it.
@@ -270,9 +265,9 @@ class mod_edpreset_generator extends testing_module_generator {
      * Behat entity: the following "mod_edpreset > preset details" exist, with an activity column
      * holding the activity's idnumber.
      *
-     * A description or guidance column is HTML, as the rich text editor writes it - a feature file
-     * giving a plain sentence is giving valid HTML and gets it back unchanged. The two format
-     * columns are accepted so a feature can pin a different one, but they are rarely worth setting.
+     * A description column is HTML, as the rich text editor writes it - a feature file giving a
+     * plain sentence is giving valid HTML and gets it back unchanged. The format column is accepted
+     * so a feature can pin a different one, but it is rarely worth setting.
      *
      * @param array $data Must contain cmid and presetname.
      */
@@ -284,8 +279,6 @@ class mod_edpreset_generator extends testing_module_generator {
             'presetname',
             'description',
             'descriptionformat',
-            'teacherguidance',
-            'teacherguidanceformat',
             'tags',
             'defaultname',
         ];

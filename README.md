@@ -19,13 +19,6 @@ The version pin is deliberate: the plugin depends on the legacy `get_course_cont
 which Moodle is migrating to the hook API. Do not widen `$plugin->supported` without re-checking that
 the callback still exists and is still dispatched.
 
-### Related plugins
-
-`mod_ednote` is an optional companion. When it is installed, copying a preset that carries teacher
-guidance also drops a teacher note above the new activity. There is deliberately **no**
-`$plugin->dependencies` entry — the link is one-way and soft, and either plugin installs and works on
-its own.
-
 ## Installation
 
 1. Copy the plugin into `mod/edpreset` in your Moodle installation:
@@ -81,7 +74,6 @@ fill in the **Preset details** group at the top of its settings form:
 | --- | --- | --- |
 | Preset name | yes | What teachers see. Independent of the activity's own name. |
 | Description | yes | Rich text. Shown on the preset card and in the activity chooser's info panel. |
-| Teacher guidance | no | Rich text. Becomes a teacher note above the copied activity (needs `mod_ednote`). |
 | Tags | no | Comma separated. Also prefixed onto the chooser description so tag search works there. |
 | Default activity name | no | The name the copied activity is given. |
 
@@ -136,9 +128,6 @@ course**:
 Only the course's own activities can be dragged. The template's activities keep the order its curator
 arranged them in and act as the positions to drop between — a teacher can decide where their own
 content sits relative to the template, but not rearrange the template itself.
-
-Teacher notes never appear in the dialogue: each note stays pinned immediately above the activity it
-describes, wherever that activity ends up.
 
 After a template is added, the course's **Default section template** custom field records its name.
 
@@ -322,24 +311,21 @@ Three core callbacks extend other modules' settings forms inside the template co
   created by web service or restore without the form ever being submitted.
 * `mod_edpreset_coursemodule_edit_post_actions()` writes the `edpreset_meta` row.
 
-The description and the guidance are the standard rich text editor. They are typed `PARAM_RAW` on
+The description is the standard rich text editor. It is typed `PARAM_RAW` on
 the form (anything narrower strips the markup the curator just wrote) and are rendered and cleaned
 exactly once, at bake time, via `format_text(…, ['noclean' => false])` — the point at which the text
 crosses out of the template course and becomes readable by everyone who can add an activity.
 
-Each carries its own format column, and the baker renders with the format that was stored rather
+It carries its own format column, and the baker renders with the format that was stored rather
 than assuming HTML: a site running the plain textarea editor is still offered the whole format menu,
 so `FORMAT_HTML` is the norm rather than a guarantee.
 
-The editors are created with `maxfiles => 0`. The plugin implements no `pluginfile` callback by
+The editor is created with `maxfiles => 0`. The plugin implements no `pluginfile` callback by
 design, so a file embedded here is a file nothing can serve; and the text is read by every teacher
 on the site, not only by whoever can reach the template course.
 
 Emptiness is `html_is_blank()`, not `trim()`. A rich text editor that has been typed into and
-emptied again holds `<p></p>` or `<p><br></p>`, neither of which is an empty string. Guidance is
-normalised to `''` on the way in and checked again at bake time, because **"has guidance" is a plain
-emptiness test** in the baker, in the copier's `emit_note()` and in `mod_ednote` — an empty
-paragraph would put a blank teacher note above every copy of the preset.
+emptied again holds `<p></p>` or `<p><br></p>`, neither of which is an empty string.
 
 ### The bake pipeline
 
@@ -422,18 +408,10 @@ After `execute_plan()` the copier:
   completion, competencies and third-party observers never learn the activity exists;
 * renames the activity to the preset's default name *before* reading modinfo, since
   `set_coursemodule_name()` purges and rebuilds the course cache;
-* emits a `mod_ednote` teacher note above the activity when the preset has guidance, that module is
-  installed and enabled, and the user may add one here. The note carries the *preset id*, so later
-  edits in the template course reach every course that already added it, with the guidance text
-  stored as a fallback.
 
-  The installed-and-enabled part is checked directly against the `modules` table, and must not be
-  left to `course_allowed_module()`: for a module that is not installed there is no
-  `mod/ednote:addinstance` capability to test, and that function's response to a missing capability
-  is to **return true** — "if the capability does not exist, the module can always be added". The
-  `create_module()` call after it then throws looking the module row up with `MUST_EXIST`, which
-  would turn every copy of a guidance-carrying preset into a failed copy on exactly the sites this
-  plugin promises to support.
+Teacher guidance embedded in the exemplar needs none of this: its tokens are in the exemplar's text
+and its blocks are in the activity's backup, so the restore brings both. `test_embedded_guidance_travels_with_a_copy()`
+pins that, since nothing in the copier would notice if it stopped being true.
 
 `copy_many()` copies a batch sequentially. Nothing wraps a restore in a transaction — core does not
 either — so a preset that fails does not take the rest down with it; the caller gets both an `added`
@@ -450,8 +428,7 @@ out of memory — exactly this case).
 
 `copy.php` takes a preset list **or** a `template` (a template course section number), never both,
 plus an optional `order` of `p<presetid>` / `c<cmid>` tokens. `activity_copier::copy_template()`
-snapshots the section, copies the members through the ordinary `copy_many()`, then rewrites the
-order.
+copies the members through the ordinary `copy_many()`, then rewrites the order.
 
 There is **no supported API that writes a section's `sequence` in one go** — both
 `course_update_section()` and `\core_courseformat\local\sectionactions::update()` strip the field out,
@@ -460,12 +437,6 @@ core's own idiom from `\core_courseformat\stateactions::cm_move()`: walk the wan
 re-reading `get_fast_modinfo()` each iteration, moving each module in front of the one placed just
 after it. Each `moveto_module()` rebuilds the course cache twice, which is why `access::MAX_ORDER_TOKENS`
 exists.
-
-Teacher notes are never offered to the teacher to arrange — a note belongs to exactly one activity,
-and letting it be dragged away would only produce orphans. `note_pairs()` reconstructs the pairings
-from two sources: notes this copy made are reported directly by `copy_with_note()`, while notes
-already in the section are inferred from the snapshot taken **before** the copy, since the copy itself
-can splice new modules between a note and its activity.
 
 Anything the order does not mention is appended, keeping its relative order. That is both how
 untouched activities end up below the template and the safety net that stops a stale or hand-edited

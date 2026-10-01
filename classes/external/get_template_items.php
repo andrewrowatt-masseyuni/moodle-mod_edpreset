@@ -22,7 +22,6 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use mod_edpreset\local\access;
-use mod_edpreset\local\activity_copier;
 use mod_edpreset\local\section_template;
 use moodle_exception;
 
@@ -124,10 +123,6 @@ class get_template_items extends external_api {
     /**
      * The activities already in the target section.
      *
-     * Teacher notes are left out on purpose: a note is chrome belonging to the activity below it,
-     * and mod_edpreset re-attaches each one when it writes the final order, so offering them here
-     * would only let a teacher strand one.
-     *
      * @param \stdClass $course The target course.
      * @param int $sectionnum The target section number.
      * @return array[]
@@ -139,7 +134,7 @@ class get_template_items extends external_api {
         $items = [];
         foreach ($modinfo->sections[$sectionnum] ?? [] as $cmid) {
             $cm = $modinfo->get_cm($cmid);
-            if ($cm->deletioninprogress || $cm->modname === activity_copier::NOTE_MODNAME) {
+            if ($cm->deletioninprogress) {
                 continue;
             }
 

@@ -45,7 +45,7 @@ class access {
      * @var int How many positions one reorder may describe.
      *
      * The list covers the template's own activities plus everything already in the target section,
-     * teacher notes included, so it is legitimately longer than MAX_PRESETS. This is only here to
+     * so it is legitimately longer than MAX_PRESETS. This is only here to
      * stop a hand-edited request from making the reorder loop - which rebuilds the course cache
      * twice per position - run for an unbounded time.
      */

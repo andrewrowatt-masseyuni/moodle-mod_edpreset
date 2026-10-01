@@ -235,7 +235,6 @@ class baker {
         // called this week.
         $preset->set('title', $details->get('presetname'));
         $preset->set('description', self::render_description($details));
-        $preset->set('teacherguidance', self::render_guidance($details));
         $preset->set('tags', $details->get('tags'));
         $preset->set('defaultname', $details->get('defaultname'));
         $preset->set('category', $sectiondata['category']);
@@ -277,35 +276,6 @@ class baker {
         return format_text(
             (string)$details->get('description'),
             (int)$details->get('descriptionformat'),
-            ['context' => \context_system::instance(), 'noclean' => false]
-        );
-    }
-
-    /**
-     * Turn the curator's guidance into the cleaned HTML teachers are shown.
-     *
-     * Cleaned at bake time for the same reason as the description, and it matters more here: this
-     * HTML is emitted unescaped into every course that has a note for this preset.
-     *
-     * Unlike the description, guidance is optional. Returning '' rather than letting format_text()
-     * wrap nothing in a paragraph is what lets callers treat "has guidance" as a simple emptiness
-     * test - emit_note() and mod_ednote both rely on that. The test is html_is_blank() rather than
-     * trim() because a rich text editor that has been typed into and emptied again leaves "<p></p>"
-     * behind. The settings form normalises that away before storing it, but the form is not the
-     * only thing that writes these rows, so the guarantee is made here too.
-     *
-     * @param meta $details The curator's preset details.
-     * @return string Cleaned HTML, or '' when the curator entered no guidance.
-     */
-    protected static function render_guidance(meta $details): string {
-        $guidance = (string)$details->get('teacherguidance');
-        if (html_is_blank($guidance)) {
-            return '';
-        }
-
-        return format_text(
-            $guidance,
-            (int)$details->get('teacherguidanceformat'),
             ['context' => \context_system::instance(), 'noclean' => false]
         );
     }
