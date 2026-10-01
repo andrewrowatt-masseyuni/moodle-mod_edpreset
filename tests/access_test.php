@@ -17,6 +17,8 @@
 namespace mod_edpreset;
 
 use mod_edpreset\local\access;
+use mod_edpreset\local\coursedefault;
+use mod_edpreset\local\section_template;
 
 /**
  * Tests for the checks copy.php applies to what it has been asked to do.
@@ -129,5 +131,102 @@ final class access_test extends \advanced_testcase {
         $ids = range(1, access::MAX_PRESETS);
 
         $this->assertSame($ids, access::clean_presets(implode(',', $ids)));
+    }
+
+    /**
+     * A course nested two categories down, an editing teacher in it, and a restricted template.
+     *
+     * @return array{0: \stdClass, 1: \stdClass, 2: \stdClass, 3: \stdClass, 4: section_template}
+     *     The course, its top-level category, its subcategory, its teacher, and the template.
+     */
+    private function setup_restricted(): array {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+
+        $top = $generator->create_category(['name' => 'College']);
+        $sub = $generator->create_category(['name' => 'School', 'parent' => $top->id]);
+        $course = $generator->create_course(['category' => $sub->id]);
+        $teacher = $generator->create_and_enrol($course, 'editingteacher');
+
+        $template = new section_template(3, 'Learning model', '', [], true);
+
+        return [$course, $top, $sub, $teacher, $template];
+    }
+
+    /**
+     * An unrestricted template is for everyone who may copy into the course.
+     */
+    public function test_an_unrestricted_template_is_usable_by_a_teacher(): void {
+        [$course, , , $teacher] = $this->setup_restricted();
+        $this->setUser($teacher);
+
+        $this->assertTrue(access::can_use_template($course, new section_template(3, 'Learning model', '', [])));
+    }
+
+    /**
+     * A teacher cannot see a restricted template their course has not used.
+     */
+    public function test_a_restricted_template_is_refused_to_a_teacher(): void {
+        [$course, , , $teacher, $template] = $this->setup_restricted();
+        $this->setUser($teacher);
+
+        $this->assertFalse(access::can_use_template($course, $template));
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('templaterestricted', 'mod_edpreset'));
+        access::require_can_use_template($course, $template);
+    }
+
+    /**
+     * A course that has already used a restricted template keeps it, whoever is teaching it.
+     */
+    public function test_a_restricted_template_is_usable_by_a_course_that_used_it(): void {
+        [$course, , , $teacher, $template] = $this->setup_restricted();
+        $this->setUser($teacher);
+
+        coursedefault::set((int)$course->id, 'Learning model');
+
+        $this->assertTrue(access::can_use_template($course, $template));
+        // The match is exact, as the one-template lock's is.
+        $this->assertFalse(access::can_use_template($course, $template, 'Learning'));
+        // A record the caller has already read is used in place of reading it again.
+        $this->assertFalse(access::can_use_template($course, $template, 'Something else'));
+    }
+
+    /**
+     * Someone who can manage activities across the course's top-level category may use it anywhere
+     * beneath that category.
+     */
+    public function test_a_restricted_template_is_usable_from_the_top_level_category(): void {
+        [$course, $top, , , $template] = $this->setup_restricted();
+        $manager = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->role_assign('manager', $manager->id, \context_coursecat::instance($top->id)->id);
+        $this->setUser($manager);
+
+        $this->assertTrue(access::can_use_template($course, $template));
+    }
+
+    /**
+     * A role in an intermediate category is not enough: the rule names the top-level category.
+     */
+    public function test_a_restricted_template_is_refused_from_a_subcategory(): void {
+        [$course, , $sub, , $template] = $this->setup_restricted();
+        $manager = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->role_assign('manager', $manager->id, \context_coursecat::instance($sub->id)->id);
+        $this->setUser($manager);
+
+        $this->assertFalse(access::can_use_template($course, $template));
+    }
+
+    /**
+     * Someone who can manage activities at system level may use it in any course.
+     */
+    public function test_a_restricted_template_is_usable_with_a_system_role(): void {
+        [$course, , , , $template] = $this->setup_restricted();
+        $manager = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->role_assign('manager', $manager->id, \context_system::instance()->id);
+        $this->setUser($manager);
+
+        $this->assertTrue(access::can_use_template($course, $template));
     }
 }

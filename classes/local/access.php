@@ -107,6 +107,94 @@ class access {
     }
 
     /**
+     * Whether the current user may see and add a section template in a course.
+     *
+     * Only a restricted template - one marked [Template,restricted] - is ever refused. It is offered
+     * to a course that has already used it, so a course built from it can keep adding it, and
+     * otherwise only to users who can manage activities across more than one course: see
+     * can_use_restricted_templates().
+     *
+     * "Already used" is an exact match on the name the course recorded, the same comparison
+     * coursedefault::allows_for_record() makes, so that a template this lets a course see is never
+     * one the one-template lock then refuses on a technicality of spelling.
+     *
+     * This is separate from that lock, not part of it. A restricted template a course may not use
+     * is not shown at all, where a locked one is shown greyed out: the restriction is about who
+     * should know the template is there, the lock only about which one a course has settled on.
+     *
+     * @param stdClass $course The target course.
+     * @param section_template $template The template.
+     * @param string|null $recorded The template the course has already used, if the caller has read
+     *     it; null to read it here.
+     * @return bool
+     */
+    public static function can_use_template(stdClass $course, section_template $template, ?string $recorded = null): bool {
+        if (!$template->is_restricted()) {
+            return true;
+        }
+
+        $recorded = $recorded ?? coursedefault::get((int)$course->id);
+        if ($recorded !== '' && $recorded === $template->get_name()) {
+            return true;
+        }
+
+        return self::can_use_restricted_templates($course);
+    }
+
+    /**
+     * Require that the current user may see and add a section template in a course.
+     *
+     * @param stdClass $course The target course.
+     * @param section_template $template The template.
+     * @throws moodle_exception If they may not.
+     */
+    public static function require_can_use_template(stdClass $course, section_template $template): void {
+        if (!self::can_use_template($course, $template)) {
+            throw new moodle_exception('templaterestricted', 'mod_edpreset');
+        }
+    }
+
+    /**
+     * Whether the current user may use any restricted template in a course, whatever it has used.
+     *
+     * Granted by moodle/course:manageactivities at system level or in the course's top-level
+     * category - the people who set courses up, rather than the teachers of one. Deliberately not
+     * any category in between: a role in a subcategory is someone else's delegation, and the
+     * top-level category is where the decision about using a restricted template sits.
+     *
+     * @param stdClass $course The target course.
+     * @return bool
+     */
+    public static function can_use_restricted_templates(stdClass $course): bool {
+        $capability = 'moodle/course:manageactivities';
+
+        if (has_capability($capability, \context_system::instance())) {
+            return true;
+        }
+
+        $topcategory = self::top_level_category_context($course);
+
+        return $topcategory && has_capability($capability, $topcategory);
+    }
+
+    /**
+     * The context of the top-level category a course sits under, however deeply it is nested.
+     *
+     * @param stdClass $course The course.
+     * @return \context_coursecat|null Null for a course outside every category, i.e. the site course.
+     */
+    protected static function top_level_category_context(stdClass $course): ?\context_coursecat {
+        foreach (context_course::instance($course->id)->get_parent_contexts() as $parent) {
+            // Depth 1 is the system context, so a top-level category is the category at depth 2.
+            if ($parent instanceof \context_coursecat && (int)$parent->depth === 2) {
+                return $parent;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Turn the presets request parameter into a list of ids to copy, in the order asked for.
      *
      * @param string $sequence A PARAM_SEQUENCE list of preset ids.

@@ -79,5 +79,32 @@ function xmldb_edpreset_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026100200, 'edpreset');
     }
 
+    if ($oldversion < 2026100201) {
+        // Section templates marked [Template,restricted]. Existing rows take 0 until a rebuild sets
+        // the flag from the section names.
+        $table = new xmldb_table('edpreset_item');
+        $field = new xmldb_field(
+            'templaterestricted',
+            XMLDB_TYPE_INTEGER,
+            '1',
+            null,
+            XMLDB_NOTNULL,
+            null,
+            '0',
+            'templatename'
+        );
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Queued rather than left to the nightly reconcile. A section a curator has already named
+        // "[Template,restricted]" was not a template at all to the previous marker match, so its
+        // activities are currently being offered one by one - which is exactly what the marker was
+        // meant to prevent.
+        \core\task\manager::queue_adhoc_task(new \mod_edpreset\task\rebuild_presets(), true);
+
+        upgrade_mod_savepoint(true, 2026100201, 'edpreset');
+    }
+
     return true;
 }

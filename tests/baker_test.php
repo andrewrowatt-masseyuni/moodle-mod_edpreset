@@ -219,6 +219,40 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
+     * A restricted marker reaches every member of its template, and does not change the name.
+     */
+    public function test_restricted_marker_is_denormalised(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_template_course([
+            2 => [
+                'name' => 'Learning model [Template,restricted]',
+                'activities' => [
+                    ['modname' => 'page', 'name' => 'Restricted one'],
+                    ['modname' => 'page', 'name' => 'Restricted two'],
+                ],
+            ],
+            3 => [
+                'name' => 'Weekly cycle [Template]',
+                'activities' => [['modname' => 'page', 'name' => 'Open page']],
+            ],
+        ]);
+
+        baker::rebuild();
+
+        foreach (['Restricted one', 'Restricted two'] as $title) {
+            $member = preset::get_record(['title' => $title]);
+            $this->assertSame('Learning model', $member->get('templatename'));
+            $this->assertTrue((bool)$member->get('templaterestricted'));
+        }
+
+        $open = preset::get_record(['title' => 'Open page']);
+        $this->assertSame('Weekly cycle', $open->get('templatename'));
+        $this->assertFalse((bool)$open->get('templaterestricted'));
+    }
+
+    /**
      * The description is cleaned at bake time, not at display time.
      *
      * This is the whole reason the rendering happens here rather than in the chooser: the field is

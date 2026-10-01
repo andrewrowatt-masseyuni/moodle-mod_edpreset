@@ -16,7 +16,9 @@
 
 namespace mod_edpreset;
 
+use mod_edpreset\external\get_template_items;
 use mod_edpreset\external\set_favourite;
+use mod_edpreset\local\coursedefault;
 use mod_edpreset\output\chooser_page;
 
 /**
@@ -26,6 +28,7 @@ use mod_edpreset\output\chooser_page;
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \mod_edpreset\external\set_favourite
+ * @covers     \mod_edpreset\external\get_template_items
  */
 final class external_test extends \advanced_testcase {
     /**
@@ -103,5 +106,38 @@ final class external_test extends \advanced_testcase {
 
         $this->expectException(\moodle_exception::class);
         set_favourite::execute(99999, true);
+    }
+
+    /**
+     * The reorder dialogue lists a restricted template's activities only where the chooser shows it.
+     */
+    public function test_get_template_items_respects_a_restricted_template(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Learning model',
+            'templaterestricted' => 1,
+        ]);
+
+        // A course that has used the template gets its activities.
+        $used = $generator->create_course(['numsections' => 2]);
+        coursedefault::set((int)$used->id, 'Learning model');
+        $this->setUser($generator->create_and_enrol($used, 'editingteacher'));
+
+        $result = get_template_items::execute((int)$used->id, 1, 3);
+        $this->assertCount(1, $result['templateitems']);
+
+        // One that has not is refused.
+        $fresh = $generator->create_course(['numsections' => 2]);
+        $this->setUser($generator->create_and_enrol($fresh, 'editingteacher'));
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('templaterestricted', 'mod_edpreset'));
+        get_template_items::execute((int)$fresh->id, 1, 3);
     }
 }

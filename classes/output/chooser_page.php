@@ -18,6 +18,7 @@ namespace mod_edpreset\output;
 
 use core\output\renderer_base;
 use core\output\templatable;
+use mod_edpreset\local\access;
 use mod_edpreset\local\chooser;
 use mod_edpreset\local\coursedefault;
 use mod_edpreset\local\section_template;
@@ -100,13 +101,15 @@ class chooser_page implements renderable, templatable {
         $presets = chooser::get_page_presets();
         $collapsed = self::get_collapsed_keys();
 
-        // A section template is offered as a set, so its members never become cards of their own.
-        $templates = section_template::from_presets($presets);
-        $individuals = array_values(array_filter($presets, fn(preset $preset) => !$preset->is_template_member()));
-
         // Once a course has used one template it keeps to it, so every other template is shown but
-        // cannot be chosen. Read once here rather than per card.
+        // cannot be chosen. Read once here rather than per card. It also decides which restricted
+        // templates the course may see.
         $usedtemplate = coursedefault::get((int)$this->course->id);
+
+        // A section template is offered as a set, so its members never become cards of their own.
+        $templates = $this->usable_templates(section_template::from_presets($presets), $usedtemplate);
+        $presets = $this->without_hidden_members($presets, $templates);
+        $individuals = array_values(array_filter($presets, fn(preset $preset) => !$preset->is_template_member()));
 
         $templatecards = [];
         foreach ($templates as $template) {
@@ -199,6 +202,40 @@ class chooser_page implements renderable, templatable {
                 : null,
             'categories' => $categories,
         ];
+    }
+
+    /**
+     * The templates this course and user may see, dropping the restricted ones they may not.
+     *
+     * A refused template is left out entirely rather than shown locked: unlike the one-template
+     * lock, the point of the restriction is that the template is not offered to this course at all.
+     *
+     * @param section_template[] $templates The templates, keyed by section number.
+     * @param string $usedtemplate The template this course has already used, or '' if none.
+     * @return section_template[] The usable ones, keys preserved.
+     */
+    protected function usable_templates(array $templates, string $usedtemplate): array {
+        return array_filter(
+            $templates,
+            fn(section_template $template) => access::can_use_template($this->course, $template, $usedtemplate)
+        );
+    }
+
+    /**
+     * Drop the members of every template that is not being shown.
+     *
+     * Without this a hidden template would still put its members' tags and recommended sections in
+     * the filter bar - both a hint that it exists and a filter that matches nothing.
+     *
+     * @param preset[] $presets The page's presets.
+     * @param section_template[] $templates The templates being shown, keyed by section number.
+     * @return preset[]
+     */
+    protected function without_hidden_members(array $presets, array $templates): array {
+        return array_values(array_filter(
+            $presets,
+            fn(preset $preset) => !$preset->is_template_member() || isset($templates[(int)$preset->get('sectionnum')])
+        ));
     }
 
     /**

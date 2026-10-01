@@ -119,6 +119,9 @@ the section is worth doing.
 The activities in a `[Template]` section are offered **only** as part of the template. They do not
 appear individually, in the standard activity chooser or on the preset activities page.
 
+End the name in `[Template,restricted]` instead to offer it only to some courses — see
+[Restricted templates](#restricted-templates).
+
 > Use text for a template's section summary. An image uploaded into it is served through the template
 > course's own file area, so it will not load for teachers who cannot access that course.
 
@@ -162,6 +165,41 @@ Two site settings govern this, both on by default:
 "No longer available" means the curator has deleted or renamed the section — deliberately *not*
 "has no live members right now". A template mid-rebake momentarily has none, and treating that as
 gone would let a course slip its lock for good over a few minutes of cron.
+
+### Restricted templates
+
+A template can be kept back from most courses by adding `restricted` to its marker:
+
+```
+Whakapiri-Whakamārama-Whakamana learning model [Template,restricted]
+```
+
+A restricted template is offered only:
+
+* in a course whose **Default section template** already records it — so a course built from it can
+  keep adding it, whoever is teaching it; or
+* to a user with `moodle/course:manageactivities` at **system level** or in the course's **top-level
+  category** (a role in an intermediate category does not count).
+
+Everyone else does not see it at all — not greyed out like a locked template, simply absent, along
+with its tags and recommended sections in the filter bar. `copy.php` and the reorder dialogue's web
+service refuse it too, so a hand-made link gets an error rather than a copy:
+
+> This section template is restricted to courses that already use it. Contact Stream support if you
+> need to use it in this course.
+
+Details worth knowing:
+
+* The marker is case- and space-tolerant: `[template, Restricted]` works.
+* Restricting does not rename. `Induction [Template]` and `Induction [Template,restricted]` both strip
+  to `Induction`, so the courses that already recorded it keep matching it.
+* "Already records it" is an **exact** match on the stored name, the same comparison the one-template
+  lock uses.
+* An option the plugin does not recognise — `[Template,restriced]`, say — **restricts** the template.
+  The only option there is narrows who may see a template, so a typo has to fail closed rather than
+  publish something the curator meant to keep back.
+* Restriction is independent of the one-template lock. A user allowed to see a restricted template
+  in a course already settled on a different one sees it locked, as any other template would be.
 
 ### Linking straight to the section templates
 
@@ -265,13 +303,13 @@ There is **no table for section templates**. A template is a view over the prese
 intended order is stored simply by existing. `\mod_edpreset\local\section_template` does the
 grouping.
 
-The only two facts a template card needs that a preset row did not already carry are denormalised
-onto every member row by the baker — which is exactly what `category` already did with the section
-name:
+The facts a template card needs that a preset row did not already carry are denormalised onto every
+member row by the baker — which is exactly what `category` already did with the section name:
 
 | Column | Meaning |
 | --- | --- |
 | `templatename` | Section name with the marker stripped. **Non-empty is the flag** that a preset is a template member. |
+| `templaterestricted` | Whether the marker carried an option, i.e. `[Template,restricted]`. |
 | `templatesummary` | Cleaned HTML of the section summary, rendered once at bake time. |
 
 A template's identity in URLs and grouping is its `sectionnum`, not its name — two sections could
@@ -501,6 +539,12 @@ handler and the tests. It requires `moodle/course:manageactivities` and
 `moodle/restore:restoretargetimport` on the target course, checks `course_allowed_module()`, and
 range-checks the section number against the format's maximum (the same guard core applies in
 `modedit.php`, MDL-69431).
+
+`local\access::can_use_template()` is the second gate, for section templates only: it is what
+refuses a restricted template (see *Restricted templates*). The chooser page uses it to leave such a
+template out, and `copy.php` and `get_template_items` call `require_can_use_template()` before doing
+anything with one. The course's recorded template is read once by the chooser page and passed in,
+just as the one-template lock does.
 
 Both `copy.php` and `chooser.php` call `require_sesskey()`. The chooser links are minted server-side
 per user, so carrying a sesskey costs nothing and closes CSRF on what is otherwise a state-changing

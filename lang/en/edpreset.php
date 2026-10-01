@@ -43,7 +43,7 @@ $string['chooser:expandsection'] = 'Expand {$a}';
 $string['chooser:favourite'] = 'Star {$a}';
 $string['chooser:filterbysection'] = 'Filter by recommended section {$a}';
 $string['chooser:filterbytag'] = 'Filter by {$a}';
-$string['chooser:lastused'] = 'You last used this template in the course.';
+$string['chooser:lastused'] = 'This template was last used in the course.';
 $string['chooser:lastusedrecommended'] = 'Recommended because you last used this template in the course.';
 $string['chooser:nopresets'] = 'There are no preset activities to show yet.';
 $string['chooser:noresults'] = 'No preset activities match your filters.';
@@ -192,7 +192,9 @@ $string['settings:templatecourseid_notfound'] = 'No course with ID {$a} exists.'
 $string['settings:templatecourseid_notsandbox'] = 'The restore test course cannot be used as the template course; its contents are deleted before every validation.';
 $string['settings:templatecourseid_notsite'] = 'The site home cannot be used as the template course.';
 $string['settings:templateheading'] = 'Section templates';
-$string['settings:templateheading_desc'] = 'A section of the template course whose name ends in "[Template]" is offered as a single card that adds its whole set of activities at once. Its activities still need their own "Preset details", and are not offered individually.';
+$string['settings:templateheading_desc'] = 'A section of the template course whose name ends in "[Template]" is offered as a single card that adds its whole set of activities at once. Its activities still need their own "Preset details", and are not offered individually.
+
+End the name in "[Template,restricted]" instead to offer the template only to courses that have already used it, and to users who can manage activities at site level or in the course\'s top-level category. Anyone else does not see it at all.';
 $string['status:baking'] = 'Building backup';
 $string['status:failed'] = 'Failed';
 $string['status:pending'] = 'Waiting to build';
@@ -204,6 +206,7 @@ $string['task:rebuildpresets'] = 'Rescan the preset template course';
 $string['task:reconcilepresets'] = 'Rebuild preset activity backups';
 $string['task:validatepreset'] = 'Test-restore a preset activity backup';
 $string['templatelocked'] = 'You cannot select this template because a different template has already been used in the course. Contact Stream support if you need to resolve this.';
+$string['templaterestricted'] = 'This section template is restricted to courses that already use it. Contact Stream support if you need to use it in this course.';
 $string['toomanypositions'] = 'No more than {$a} activities can be reordered at once.';
 $string['toomanypresets'] = 'No more than {$a} preset activities can be added at once.';
 

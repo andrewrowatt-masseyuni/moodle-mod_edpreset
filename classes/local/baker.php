@@ -142,12 +142,12 @@ class baker {
     /**
      * The section-level values every preset in a section carries.
      *
-     * All three are denormalised onto each member row rather than held anywhere central, which is
+     * All of them are denormalised onto each member row rather than held anywhere central, which is
      * what lets the chooser page build itself from a single query over the presets.
      *
      * @param stdClass $course The template course.
      * @param section_info $sectioninfo The section.
-     * @return array{category: string, templatename: string, templatesummary: string}
+     * @return array{category: string, templatename: string, templaterestricted: bool, templatesummary: string}
      */
     protected static function section_data(stdClass $course, section_info $sectioninfo): array {
         // Deliberately the raw name: get_section_name() below is format_string()ed and falls back to
@@ -163,6 +163,7 @@ class baker {
                     ['context' => \context_course::instance((int)$course->id)]
                 )
                 : '',
+            'templaterestricted' => template::is_restricted_section_name($sectioninfo->name),
             'templatesummary' => $istemplate ? self::render_section_summary($sectioninfo) : '',
         ];
     }
@@ -240,6 +241,7 @@ class baker {
         $preset->set('recommendedsection', $details->get('recommendedsection'));
         $preset->set('category', $sectiondata['category']);
         $preset->set('templatename', $sectiondata['templatename']);
+        $preset->set('templaterestricted', $sectiondata['templaterestricted']);
         $preset->set('templatesummary', $sectiondata['templatesummary']);
         $preset->set('sectionnum', (int)$cm->sectionnum);
         $preset->set('sortorder', $sortorder);

@@ -97,6 +97,9 @@ class preset extends persistent {
             // Non-empty means this preset is a member of a section template, and is therefore
             // offered only as part of that template - never as a card of its own.
             'templatename' => ['type' => PARAM_TEXT, 'default' => ''],
+            // Whether the template this preset belongs to is marked [Template,restricted]. Carried on
+            // every member, like templatename. Meaningless on a preset that is not a member.
+            'templaterestricted' => ['type' => PARAM_BOOL, 'default' => 0],
             // Cleaned HTML like description, and PARAM_RAW for the same reason: the cleaning has
             // already happened at bake time and must not be repeated or escaped here.
             'templatesummary' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],

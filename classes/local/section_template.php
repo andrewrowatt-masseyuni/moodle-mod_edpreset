@@ -48,6 +48,9 @@ class section_template {
     /** @var preset[] The member presets, in the order they appear in the template course. */
     protected array $members;
 
+    /** @var bool Whether the section's marker is [Template,restricted]. */
+    protected bool $restricted;
+
     /**
      * Constructor.
      *
@@ -55,12 +58,14 @@ class section_template {
      * @param string $name Section name with the marker stripped.
      * @param string $summary Cleaned HTML of the section summary.
      * @param preset[] $members The member presets, in template order.
+     * @param bool $restricted Whether the section's marker is [Template,restricted].
      */
-    public function __construct(int $sectionnum, string $name, string $summary, array $members) {
+    public function __construct(int $sectionnum, string $name, string $summary, array $members, bool $restricted = false) {
         $this->sectionnum = $sectionnum;
         $this->name = $name;
         $this->summary = $summary;
         $this->members = $members;
+        $this->restricted = $restricted;
     }
 
     /**
@@ -79,6 +84,17 @@ class section_template {
      */
     public function get_name(): string {
         return $this->name;
+    }
+
+    /**
+     * Whether this template is offered only to the courses already using it.
+     *
+     * Who may nonetheless see and add it is access::can_use_template()'s business, not this class's.
+     *
+     * @return bool
+     */
+    public function is_restricted(): bool {
+        return $this->restricted;
     }
 
     /**
@@ -318,8 +334,8 @@ class section_template {
     /**
      * Build a template from its members.
      *
-     * The name and summary are taken from the first member: every member of a section carries the
-     * same denormalised copy, so any of them would do.
+     * The name, summary and restriction are taken from the first member: every member of a section
+     * carries the same denormalised copy, so any of them would do.
      *
      * @param int $sectionnum Section number in the template course.
      * @param preset[] $members The member presets, in template order.
@@ -332,7 +348,8 @@ class section_template {
             $sectionnum,
             (string)$first->get('templatename'),
             (string)$first->get('templatesummary'),
-            array_values($members)
+            array_values($members),
+            (bool)$first->get('templaterestricted')
         );
     }
 }

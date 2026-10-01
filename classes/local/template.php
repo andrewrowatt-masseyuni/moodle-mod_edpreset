@@ -34,6 +34,25 @@ class template {
     public const TEMPLATE_MARKER = '[Template]';
 
     /**
+     * The marker option that restricts a section template to the courses already using it.
+     *
+     * Written inside the marker after a comma: "[Template,restricted]".
+     *
+     * @var string
+     */
+    public const OPTION_RESTRICTED = 'restricted';
+
+    /**
+     * Matches a template marker at the end of a raw section name, capturing any options after a comma.
+     *
+     * Case-insensitive and tolerant of spaces around the word and the comma, so "[Template]",
+     * "[template]" and "[Template, Restricted]" are all markers.
+     *
+     * @var string
+     */
+    protected const MARKER_PATTERN = '/\[\s*template\s*(?:,([^\]]*))?\]$/iu';
+
+    /**
      * Whether the plugin is switched on at all.
      *
      * @return bool
@@ -54,31 +73,67 @@ class template {
      * @return bool
      */
     public static function is_template_section_name(?string $rawname): bool {
-        $name = trim((string)$rawname);
-        if ($name === '') {
-            return false;
-        }
+        return self::parse_marker($rawname) !== null;
+    }
 
-        return \core_text::strtolower(\core_text::substr($name, -\core_text::strlen(self::TEMPLATE_MARKER)))
-            === \core_text::strtolower(self::TEMPLATE_MARKER);
+    /**
+     * Whether a section name marks its section as a restricted section template.
+     *
+     * Takes the raw name, for the reasons given on is_template_section_name().
+     *
+     * @param string|null $rawname The raw section name.
+     * @return bool False for a section that is not a template at all.
+     */
+    public static function is_restricted_section_name(?string $rawname): bool {
+        return self::parse_marker($rawname)['restricted'] ?? false;
     }
 
     /**
      * A section name with the template marker removed.
      *
      * Applied to the raw name, before format_string(), so that the marker cannot survive inside
-     * whatever a filter produces.
+     * whatever a filter produces. The options go with the marker, so "Induction [Template]" and
+     * "Induction [Template,restricted]" strip to the same name - which is what lets a curator
+     * restrict a template without releasing the courses that have already recorded it.
      *
      * @param string|null $rawname The raw section name.
      * @return string The name without the marker, trimmed. Unchanged if there was no marker.
      */
     public static function strip_template_marker(?string $rawname): string {
+        return self::parse_marker($rawname)['name'] ?? trim((string)$rawname);
+    }
+
+    /**
+     * Split a raw section name into the template name and the marker's options.
+     *
+     * An option this plugin does not recognise makes the template restricted rather than being
+     * ignored. The only option there is narrows who may see a template, so the likely cause of an
+     * unknown one is a mistyped "restricted" - and getting that wrong should hide a template, not
+     * publish one the curator meant to keep back.
+     *
+     * @param string|null $rawname The raw section name.
+     * @return array{name: string, restricted: bool}|null Null if the name carries no template marker.
+     */
+    protected static function parse_marker(?string $rawname): ?array {
         $name = trim((string)$rawname);
-        if (!self::is_template_section_name($name)) {
-            return $name;
+        if (!preg_match(self::MARKER_PATTERN, $name, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
         }
 
-        return trim(\core_text::substr($name, 0, -\core_text::strlen(self::TEMPLATE_MARKER)));
+        $options = [];
+        foreach (explode(',', $matches[1][0] ?? '') as $option) {
+            $option = \core_text::strtolower(trim($option));
+            if ($option !== '') {
+                $options[] = $option;
+            }
+        }
+
+        return [
+            // A byte offset from preg_match, hence substr() rather than core_text::substr().
+            'name' => trim(substr($name, 0, $matches[0][1])),
+            'restricted' => in_array(self::OPTION_RESTRICTED, $options, true)
+                || array_diff($options, [self::OPTION_RESTRICTED]) !== [],
+        ];
     }
 
     /**

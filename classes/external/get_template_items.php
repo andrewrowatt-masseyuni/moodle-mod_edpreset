@@ -80,6 +80,9 @@ class get_template_items extends external_api {
         if (!$sectiontemplate) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
+        // The dialogue lists the template's activities, so a restricted one must not be readable
+        // here by anyone the chooser would not have shown it to.
+        access::require_can_use_template($course, $sectiontemplate);
 
         return [
             'templateitems' => self::export_template_items($sectiontemplate),

@@ -74,6 +74,9 @@ if ($templatesection) {
     if (!$template) {
         throw new moodle_exception('invalidpreset', 'mod_edpreset');
     }
+    // A restricted template is not even shown to a course that may not use it, so reaching here
+    // means a hand-made or stale link. The chooser hiding it is presentation; this is the control.
+    access::require_can_use_template($course, $template);
     // A course keeps to one template. The chooser already shows the others as unchoosable, but a
     // disabled button is a courtesy rather than a control - this is where it is actually enforced.
     if (!coursedefault::allows((int)$course->id, $template->get_name())) {

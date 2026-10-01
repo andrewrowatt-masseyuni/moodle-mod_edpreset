@@ -20,25 +20,27 @@ use mod_edpreset\output\chooser_page;
 use stdClass;
 
 /**
- * Tests for the preset chooser page's recommended section pseudo tags.
+ * Tests for what the preset chooser page offers: recommended section pseudo tags and restricted templates.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \mod_edpreset\output\chooser_page
  * @covers     \mod_edpreset\local\section_template::get_recommended_sections
+ * @covers     \mod_edpreset\local\access::can_use_template
  */
 final class chooser_page_test extends \advanced_testcase {
     /**
      * Export the chooser page for a fresh course.
      *
      * @param bool $templatesonly Show only the section templates.
+     * @param stdClass|null $course The course to export it for, or null for a fresh one.
      * @return stdClass
      */
-    private function export(bool $templatesonly = false): stdClass {
+    private function export(bool $templatesonly = false, ?stdClass $course = null): stdClass {
         global $PAGE;
 
-        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $course = $course ?? $this->getDataGenerator()->create_course(['numsections' => 2]);
         $page = new chooser_page($course, 1, 0, $templatesonly);
 
         return $page->export_for_template($PAGE->get_renderer('core'));
@@ -184,5 +186,71 @@ final class chooser_page_test extends \advanced_testcase {
             ['he whakamārama | all about the course', 'nau mai | welcome'],
             json_decode($card->sectionkeys)
         );
+    }
+
+    /**
+     * Create one restricted template and one ordinary one, each with a tagged member.
+     *
+     * @return stdClass The template course.
+     */
+    private function create_restricted_and_open_templates(): stdClass {
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $templatecourse = $plugingenerator->create_template_course();
+
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Learning model',
+            'templaterestricted' => 1,
+            'tags' => 'Restricted tag',
+            'recommendedsection' => 'Restricted section',
+        ]);
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 4,
+            'templatename' => 'Weekly cycle',
+            'tags' => 'Open tag',
+        ]);
+
+        return $templatecourse;
+    }
+
+    /**
+     * A restricted template is not shown to a teacher whose course has not used it - not even
+     * locked - and nothing of it reaches the filter bar.
+     */
+    public function test_restricted_template_is_hidden_from_a_teacher(): void {
+        $this->resetAfterTest();
+        $this->create_restricted_and_open_templates();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+
+        foreach ([false, true] as $templatesonly) {
+            $data = $this->export($templatesonly, $course);
+
+            $this->assertSame(['Weekly cycle'], array_keys($this->cards_by_title($data)));
+            $this->assertSame(['Open tag'], $this->names($data->alltags));
+            $this->assertSame([], $data->allsections);
+        }
+    }
+
+    /**
+     * A course that has already used a restricted template still sees it.
+     */
+    public function test_restricted_template_is_shown_to_a_course_that_used_it(): void {
+        $this->resetAfterTest();
+        $this->create_restricted_and_open_templates();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+        \mod_edpreset\local\coursedefault::set((int)$course->id, 'Learning model');
+
+        $data = $this->export(true, $course);
+        $cards = $this->cards_by_title($data);
+
+        $this->assertArrayHasKey('Learning model', $cards);
+        $this->assertFalse($cards['Learning model']->locked);
+        $this->assertSame(['Restricted section'], $this->names($data->allsections));
     }
 }
