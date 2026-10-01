@@ -18,6 +18,7 @@ namespace mod_edpreset\local;
 
 use core_course\local\entity\content_item;
 use core_course\local\entity\string_title;
+use mod_edpreset\output\chooser_page;
 use mod_edpreset\preset;
 use moodle_url;
 use stdClass;
@@ -54,9 +55,14 @@ class chooser {
     /**
      * The presets offered in a given course.
      *
-     * Only the presets the curator has marked "Show in activity chooser" go here, plus one
-     * placeholder leading to the rest. The standard chooser renders every item it is given at once,
-     * so it stops being usable as soon as it is handed every preset.
+     * Only the presets the curator has marked "Show in activity chooser" go here, and those this user
+     * has starred on the preset chooser page, plus one placeholder leading to the rest. The standard
+     * chooser renders every item it is given at once, so it stops being usable as soon as it is
+     * handed every preset.
+     *
+     * A star on the preset chooser page is that page's own, not the standard chooser's: it puts the
+     * preset into this user's list, but core knows nothing of it, so the preset does not appear on
+     * the standard chooser's Starred tab. The two kinds of star are kept apart deliberately.
      *
      * Access is already gated upstream: content_item_service requires moodle/course:manageactivities
      * and applies course_allowed_module() (i.e. mod/edpreset:addinstance) to everything we return.
@@ -72,6 +78,8 @@ class chooser {
             return [];
         }
 
+        $starred = chooser_page::get_favourited_ids($user);
+
         $items = [];
         foreach (self::get_offered_presets(access::can_review($course, $user)) as $preset) {
             // A section template is offered as a set or not at all, so its members never appear
@@ -79,7 +87,7 @@ class chooser {
             if ($preset->is_template_member()) {
                 continue;
             }
-            if (!$preset->get('showinchooser')) {
+            if (!$preset->get('showinchooser') && !in_array((int)$preset->get('id'), $starred, true)) {
                 continue;
             }
             $items[] = self::make_content_item($preset, $course);
@@ -178,7 +186,7 @@ class chooser {
      * Every preset, without course context.
      *
      * Deliberately a superset of get_content_items(), which offers only the presets marked to show
-     * in the activity chooser.
+     * in the activity chooser and the ones the user has starred.
      * content_item_service::add_to_user_favourites() looks a starred id up with array_search()
      * against this list and, when that fails, indexes $items[0] instead - so anything that can
      * carry a star in the standard chooser must appear here. Narrowing this to match

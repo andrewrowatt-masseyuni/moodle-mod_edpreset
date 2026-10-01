@@ -266,6 +266,39 @@ final class lib_test extends \advanced_testcase {
     }
 
     /**
+     * A preset a teacher has starred on the preset chooser page is in their activity chooser too.
+     *
+     * Only theirs, and only in the list: the page's stars are its own, so core does not count the
+     * preset as one of its favourites and it is not on the Starred tab.
+     */
+    public function test_presets_starred_on_the_page_reach_that_users_activity_chooser(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $course = $generator->create_course();
+        $starrer = $generator->create_and_enrol($course, 'editingteacher');
+        $other = $generator->create_and_enrol($course, 'editingteacher');
+
+        $starred = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'showinchooser' => 0]);
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'showinchooser' => 0]);
+
+        $this->setUser($starrer);
+        \mod_edpreset\external\set_favourite::execute((int)$starred->get('id'), true);
+
+        $starreritems = $this->our_items($starrer, $course);
+        $this->assertSame([(int)$starred->get('id')], array_map(fn($item) => (int)$item->id, $starreritems));
+        $this->assertFalse($starreritems[0]->favourite, 'the page\'s star must not become a core favourite');
+
+        // As the other teacher, the way their own request would build it. Core caches each request's
+        // content items under the current user rather than the user they were built for, so asking
+        // for another user's within the same request and $USER would be handed the first list back.
+        $this->setUser($other);
+        $this->assertSame([], $this->our_items($other, $course), 'another teacher\'s chooser is unaffected');
+    }
+
+    /**
      * The provider module must never offer itself.
      *
      * Implementing get_course_content_items() makes core discard the module's own default item; if

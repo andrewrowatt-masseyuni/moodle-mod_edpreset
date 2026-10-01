@@ -46,6 +46,13 @@ Feature: Add a whole section of preset activities at once
     And I should see "3 activities"
     And I should see "Page, Forum"
 
+  Scenario: Cancelling returns to the course section without adding anything
+    When I open the preset chooser for course "C1" section "1"
+    And I click on "Cancel" "link"
+    Then I should see "Teaching course"
+    And I should not see "Preset activities"
+    And I should not see "Standalone page"
+
   Scenario: The activities inside a template are not offered individually
     When I open the preset chooser for course "C1" section "1"
     Then I should see "Standalone page"

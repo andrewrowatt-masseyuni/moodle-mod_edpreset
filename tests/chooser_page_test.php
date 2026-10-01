@@ -307,7 +307,24 @@ final class chooser_page_test extends \advanced_testcase {
     }
 
     /**
-     * An ordinary section's summary is shown under its group heading, and only there.
+     * Cancel goes back to the section the page was opened for, in either of the page's two forms.
+     */
+    public function test_cancel_returns_to_the_section(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $this->getDataGenerator()->get_plugin_generator('mod_edpreset')->create_template_course();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $expected = \mod_edpreset\local\chooser::return_url($course, 1)->out(false);
+
+        foreach ([false, true] as $templatesonly) {
+            $this->assertSame($expected, $this->export($templatesonly, $course)->cancelurl);
+        }
+    }
+
+    /**
+     * An ordinary section's summary is shown under its group heading, and only there; the Starred
+     * group carries a note of its own instead.
      */
     public function test_section_summary_is_shown_under_its_group(): void {
         $this->resetAfterTest();
@@ -350,7 +367,13 @@ final class chooser_page_test extends \advanced_testcase {
             $this->cards_by_title($this->export(true))['Weekly cycle']->description
         );
 
-        // Starred is not a section, so it has no summary of its own.
-        $this->assertFalse($groups[get_string('chooser:starred', 'mod_edpreset')]->hassummary);
+        // Starred is not a section, so it does not take its presets' section summaries. What it
+        // shows instead is what a star here does: put the preset in the activity chooser too.
+        $starredgroup = $groups[get_string('chooser:starred', 'mod_edpreset')];
+        $this->assertTrue($starredgroup->hassummary);
+        $this->assertSame(
+            '<p>' . get_string('chooser:starredhelp', 'mod_edpreset') . '</p>',
+            $starredgroup->summary
+        );
     }
 }

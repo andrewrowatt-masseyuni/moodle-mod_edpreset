@@ -159,6 +159,9 @@ class chooser_page implements renderable, templatable {
         $data->hastags = !empty($data->alltags) || !empty($data->allsections);
         // Where the page's form posts the selection. The ids themselves are filled in client-side.
         $data->copyurl = (new moodle_url('/mod/edpreset/copy.php'))->out(false);
+        // Cancel goes back to the section the teacher came from - the same place copy.php sends them
+        // after adding, so leaving the page lands them in one place whichever way they leave it.
+        $data->cancelurl = chooser::return_url($this->course, $this->sectionnum)->out(false);
 
         return $data;
     }
@@ -203,8 +206,18 @@ class chooser_page implements renderable, templatable {
         }
 
         return [
+            // The summary says what a star here does beyond this page: it puts the preset in the user's
+            // activity chooser too (see chooser::get_content_items()). A paragraph, like a section
+            // summary, so it takes the same spacing.
             'starred' => $starred
-                ? $this->export_group(get_string('chooser:starred', 'mod_edpreset'), $starred, $collapsed, true)
+                ? $this->export_group(
+                    get_string('chooser:starred', 'mod_edpreset'),
+                    $starred,
+                    $collapsed,
+                    true,
+                    false,
+                    \html_writer::tag('p', get_string('chooser:starredhelp', 'mod_edpreset'))
+                )
                 : null,
             'categories' => $categories,
         ];
@@ -549,15 +562,20 @@ class chooser_page implements renderable, templatable {
     }
 
     /**
-     * The preset ids the current user has starred.
+     * The preset ids a user has starred on this page.
      *
+     * These are this page's own stars, not the standard activity chooser's. Besides marking cards
+     * here, they are what puts a preset into that user's activity chooser - see
+     * chooser::get_content_items().
+     *
+     * @param stdClass|null $user The user, or null for the current user.
      * @return int[]
      */
-    public static function get_favourited_ids(): array {
+    public static function get_favourited_ids(?stdClass $user = null): array {
         global $USER;
 
         $service = \core_favourites\service_factory::get_service_for_user_context(
-            \context_user::instance($USER->id)
+            \context_user::instance(($user ?? $USER)->id)
         );
 
         $ids = [];

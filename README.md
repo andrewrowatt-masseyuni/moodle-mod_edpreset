@@ -144,8 +144,14 @@ site-wide role or through a role in particular courses. Managers hold it by defa
   most: that chooser shows everything it is given at once, so it stops being usable if every preset
   is in it. The section a preset sits in plays no part, and a section template's activities never
   appear there on their own, whatever their details say.
+* A preset a teacher has **starred** on the preset activities page also appears in *that teacher's*
+  activity chooser, whatever its details say. The page's stars are its own, separate from the
+  activity chooser's: starring a preset on the page puts it in the chooser's list, not on the
+  chooser's Starred tab, and starring something in the chooser does not star it on the page. The
+  page's **Starred** group tells teachers so: "Items here will also show in the activity chooser."
 
 Either route ends at the same handler, and the teacher is returned to the section they started from.
+The preset activities page's **Cancel** returns them to the same place without adding anything.
 A preset arrives already configured, so — unlike every other chooser item — the flow deliberately
 does **not** end on the new activity's settings form.
 
@@ -383,8 +389,10 @@ members would let the cap truncate a template mid-way and ship a set that silent
 ### Chooser integration
 
 `mod_edpreset_get_course_content_items()` supplies the per-course items: the offered presets marked
-**Show in activity chooser** (`showinchooser`), plus the placeholder that opens the preset chooser
-page. `mod_edpreset_get_all_content_items()` supplies the context-free list, which holds every
+**Show in activity chooser** (`showinchooser`) and those the user has starred on the preset chooser
+page, plus the placeholder that opens the preset chooser page. Core caches the list for the length
+of a request only (`core/user_course_content_items`, request mode), so a star made on the page shows
+in the chooser the next time a course page loads. `mod_edpreset_get_all_content_items()` supplies the context-free list, which holds every
 offered preset that is not a template member. The second is not optional:
 `content_item_service::add_to_user_favourites()` resolves a starred id with `array_search()` over
 that list and, on failure, silently indexes `$items[0]` — an unrelated module.
@@ -681,7 +689,10 @@ why it is registered exactly once — registering twice would give every drag tw
 
 Stars are recorded against this plugin's own `core_favourites` component/item type
 (`mod_edpreset` / `preset`) in the user's context, rather than `core_course`'s, because they must
-cover the presets the standard chooser never shows. Both `create_favourite()` and `delete_favourite()`
+cover the presets the standard chooser does not show. The two sets of stars are deliberately
+independent. A page star does one thing to the standard chooser: it adds the preset to that user's
+list there (see [Chooser integration](#chooser-integration)). It never becomes a core favourite, so
+it does not put the preset on the chooser's Starred tab. Both `create_favourite()` and `delete_favourite()`
 are guarded by an existence check, since core's are unguarded and a double-click would otherwise
 produce a 500.
 

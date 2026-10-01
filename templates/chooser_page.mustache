@@ -35,6 +35,7 @@
     * sectionactivitycount int - activities already in that section
     * templatesonly bool - whether only the section templates are being shown
     * copyurl string - where the selection is posted
+    * cancelurl string - the course section to go back to without adding anything
     * sesskey string
     * hasgroups bool
     * groups array - name, key, count, expanded, starred, istemplategroup, cards, hassummary, summary
@@ -51,6 +52,7 @@
         "sectionactivitycount": 3,
         "templatesonly": false,
         "copyurl": "https://moodle.local/mod/edpreset/copy.php",
+        "cancelurl": "https://moodle.local/course/section.php?id=34",
         "sesskey": "abc123",
         "hasgroups": true,
         "hastags": true,
@@ -197,11 +199,16 @@
                             data-action="clearfilters"
                             disabled
                     >{{#str}} chooser:clearfilters, mod_edpreset {{/str}}</button>
-                    <button type="submit"
-                            class="btn btn-primary"
-                            data-action="addselected"
-                            disabled
-                    >{{#str}} chooser:addselectednone, mod_edpreset {{/str}}</button>
+                    <div class="d-flex">
+                        {{! A link rather than a button, so it needs no JavaScript and cannot submit
+                            the form it sits in. }}
+                        <a href="{{cancelurl}}" class="btn btn-secondary me-2" data-action="cancel">{{#str}} cancel {{/str}}</a>
+                        <button type="submit"
+                                class="btn btn-primary"
+                                data-action="addselected"
+                                disabled
+                        >{{#str}} chooser:addselectednone, mod_edpreset {{/str}}</button>
+                    </div>
                 {{/stickycontent}}
             {{/ core/sticky_footer }}
         </form>
@@ -212,6 +219,8 @@
             {{#templatesonly}}{{#str}} chooser:nosectiontemplates, mod_edpreset {{/str}}{{/templatesonly}}
             {{^templatesonly}}{{#str}} chooser:nopresets, mod_edpreset {{/str}}{{/templatesonly}}
         </div>
+        {{! There is no sticky footer without anything to add, so the way back goes here instead. }}
+        <a href="{{cancelurl}}" class="btn btn-secondary" data-action="cancel">{{#str}} cancel {{/str}}</a>
     {{/hasgroups}}
 </div>
 {{#js}}

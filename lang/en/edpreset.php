@@ -61,6 +61,7 @@ $string['chooser:sectioncount'] = '{$a} presets';
 $string['chooser:sectioncountone'] = '1 preset';
 $string['chooser:sectiontemplates'] = 'Section templates';
 $string['chooser:starred'] = 'Starred';
+$string['chooser:starredhelp'] = 'Items here will also show in the activity chooser.';
 $string['chooser:tagsheading'] = 'Filter by tag';
 $string['chooser:templatecount'] = '{$a} activities';
 $string['chooser:templatetypesmore'] = '{$a} and more';
