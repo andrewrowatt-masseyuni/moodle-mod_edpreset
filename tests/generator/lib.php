@@ -142,6 +142,7 @@ class mod_edpreset_generator extends testing_module_generator {
             // Deliberately empty by default: a non-empty value renames every copied activity, and
             // that should only happen in the tests that are about it.
             'defaultname' => '',
+            'recommendedsection' => '',
         ];
 
         $meta = new meta(0, (object)$fields);
@@ -281,6 +282,7 @@ class mod_edpreset_generator extends testing_module_generator {
             'descriptionformat',
             'tags',
             'defaultname',
+            'recommendedsection',
         ];
 
         $this->create_metadata($cmid, array_filter(

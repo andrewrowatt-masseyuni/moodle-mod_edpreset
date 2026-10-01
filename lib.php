@@ -161,6 +161,7 @@ function edpreset_get_form_fieldmap(): array {
         'edpreset_description' => 'presetdescription',
         'edpreset_tags' => 'presettags',
         'edpreset_defaultname' => 'presetdefaultname',
+        'edpreset_recommendedsection' => 'presetrecommendedsection',
     ];
 }
 
@@ -308,12 +309,22 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             ),
             ['maxlength' => \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH, 'size' => 60]
         ),
+        'edpreset_recommendedsection' => $mform->createElement(
+            'text',
+            'edpreset_recommendedsection',
+            get_string('presetrecommendedsection', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetrecommendedsection_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            ['maxlength' => \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH, 'size' => 60]
+        ),
     ];
 
     // Only the first and last rows carry the border's top and bottom edges.
     $edgeclasses = [
         'edpreset_detailsheading' => ' edpreset-detail-first',
-        'edpreset_defaultname' => ' edpreset-detail-last',
+        'edpreset_recommendedsection' => ' edpreset-detail-last',
     ];
 
     foreach (array_keys($elements) as $elementname) {
@@ -338,7 +349,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         // form ($this->_elements[$idx] =& $element). It must therefore be handed an array slot
         // that is never written again, not a loop variable: a loop variable is reassigned on the
         // next iteration, which re-points every slot already inserted at the last element, and
-        // the whole group renders as five copies of "Default activity name".
+        // the whole group renders as repeated copies of its last element.
         // - It inserts immediately before 'name', so forward order is what produces the intended
         // layout. Inserting in reverse would reverse the group.
         $mform->insertElementBefore($elements[$elementname], 'name');
@@ -354,6 +365,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->setType('edpreset_description', PARAM_RAW);
     $mform->setType('edpreset_tags', PARAM_TEXT);
     $mform->setType('edpreset_defaultname', PARAM_TEXT);
+    $mform->setType('edpreset_recommendedsection', PARAM_TEXT);
 
     $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
     // MoodleQuickForm_Rule_Required understands an editor's array value, and formslib appends
@@ -377,6 +389,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         ]);
         $mform->setDefault('edpreset_tags', $meta->get('tags'));
         $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
+        $mform->setDefault('edpreset_recommendedsection', $meta->get('recommendedsection'));
     }
 }
 
@@ -427,6 +440,15 @@ function mod_edpreset_coursemodule_validation($formwrapper, $data) {
         );
     }
 
+    $recommendedsection = \mod_edpreset\meta::normalise_section((string)($data['edpreset_recommendedsection'] ?? ''));
+    if (\core_text::strlen($recommendedsection) > \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH) {
+        $errors['edpreset_recommendedsection'] = get_string(
+            'presetrecommendedsectiontoolong',
+            'mod_edpreset',
+            \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH
+        );
+    }
+
     return $errors;
 }
 
@@ -461,6 +483,10 @@ function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
     $meta->set('descriptionformat', $descriptionformat);
     $meta->set('tags', \mod_edpreset\meta::normalise_tags((string)($moduleinfo->edpreset_tags ?? '')));
     $meta->set('defaultname', trim((string)($moduleinfo->edpreset_defaultname ?? '')));
+    $meta->set(
+        'recommendedsection',
+        \mod_edpreset\meta::normalise_section((string)($moduleinfo->edpreset_recommendedsection ?? ''))
+    );
 
     if ($meta->get('id')) {
         $meta->update();

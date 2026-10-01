@@ -143,6 +143,29 @@ class section_template {
     }
 
     /**
+     * Every recommended section any member carries.
+     *
+     * Built exactly as get_tags() is, and for the same reason: the chooser page offers these as
+     * pseudo tags, and its filter bar and the template's card have to agree.
+     *
+     * @return string[]
+     */
+    public function get_recommended_sections(): array {
+        $seen = [];
+        foreach ($this->members as $member) {
+            $section = (string)$member->get('recommendedsection');
+            $key = \core_text::strtolower($section);
+            if ($section !== '' && !isset($seen[$key])) {
+                $seen[$key] = $section;
+            }
+        }
+
+        \core_collator::asort($seen);
+
+        return array_values($seen);
+    }
+
+    /**
      * The human-readable activity type of each distinct member module, in template order.
      *
      * @return string[] E.g. ['Book', 'Page', 'Quiz'].

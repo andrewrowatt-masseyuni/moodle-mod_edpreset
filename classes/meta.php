@@ -47,6 +47,9 @@ class meta extends persistent {
      */
     public const DEFAULTNAME_MAXLENGTH = 250;
 
+    /** @var int Maximum length of the recommended section, matching the column and core's section name. */
+    public const RECOMMENDEDSECTION_MAXLENGTH = 255;
+
     /**
      * Define the properties of this persistent.
      *
@@ -66,6 +69,9 @@ class meta extends persistent {
             'descriptionformat' => ['type' => PARAM_INT, 'default' => FORMAT_HTML],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
+            // The section of a teacher's course this preset is meant for, e.g. "Nau mai | Welcome".
+            // Advisory only: it labels and filters the preset, and never restricts where it can go.
+            'recommendedsection' => ['type' => PARAM_TEXT, 'default' => ''],
         ];
     }
 
@@ -133,5 +139,19 @@ class meta extends persistent {
         }
 
         return \core_text::substr(implode(', ', $seen), 0, 255);
+    }
+
+    /**
+     * Tidy a curator's recommended section into the stored form.
+     *
+     * Runs of whitespace are collapsed for the same reason as in normalise_tags(): the chooser page
+     * filters on the exact name, so two presets meant for the same section must not end up apart
+     * over a doubled space. Case is left as typed, because it is shown to teachers as written.
+     *
+     * @param string $section Raw input.
+     * @return string Trimmed, with internal whitespace collapsed.
+     */
+    public static function normalise_section(string $section): string {
+        return trim(preg_replace('/\s+/u', ' ', $section));
     }
 }

@@ -106,6 +106,32 @@
     border-color: rgba(125, 125, 125, 0.75);
 }
 
+/*
+ * A recommended section is a pseudo tag: the same pill, marked out by its icon and by the accent
+ * tint the group counts use. The hover and active states step up the same tint, mirroring the
+ * neutral pill's own, so a pressed section filter still reads as pressed.
+ *
+ * The icon is sized by the pill's own font rather than by core's .icon class, which would fix it
+ * at 16px.
+ */
+.edpreset-chooser .edpreset-tag-section {
+    background-color: rgba(0, 75, 141, 0.10);
+    color: var(--edpreset-accent);
+}
+
+.edpreset-chooser button.edpreset-tag-section:hover,
+.edpreset-chooser button.edpreset-tag-section:focus {
+    background-color: rgba(0, 75, 141, 0.18);
+}
+
+.edpreset-chooser .edpreset-tag-section.edpreset-tag-active {
+    background-color: rgba(0, 75, 141, 0.30);
+}
+
+.edpreset-chooser .edpreset-tag-section .fa {
+    margin-right: 0.35em;
+}
+
 .edpreset-chooser .edpreset-group-name {
     font-weight: 400;
 }

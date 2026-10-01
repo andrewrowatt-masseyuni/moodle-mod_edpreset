@@ -203,11 +203,17 @@ final class baker_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->make_template_course();
 
+        $details = meta::get_record(['presetname' => 'Reflective journal']);
+        $details->set('recommendedsection', 'Nau mai | Welcome');
+        $details->update();
+
         baker::rebuild();
 
         $journal = preset::get_record(['title' => 'Reflective journal']);
 
         $this->assertSame('Assessment, Reflection', $journal->get('tags'));
+        $this->assertSame('Nau mai | Welcome', $journal->get('recommendedsection'));
+        $this->assertSame('', preset::get_record(['title' => 'Practice quiz'])->get('recommendedsection'));
         // The curator's rich text reaches the preset as the markup they wrote.
         $this->assertStringContainsString('<em>Reflective journal</em>', $journal->get('description'));
     }

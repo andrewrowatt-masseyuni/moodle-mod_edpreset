@@ -76,9 +76,18 @@ fill in the **Preset details** group at the top of its settings form:
 | Description | yes | Rich text. Shown on the preset card and in the activity chooser's info panel. |
 | Tags | no | Comma separated. Also prefixed onto the chooser description so tag search works there. |
 | Default activity name | no | The name the copied activity is given. |
+| Recommended section | no | The section of a teacher's course the preset is meant for, e.g. `Nau mai \| Welcome`. Advisory only — see below. |
 
 An activity with no preset details is not a preset and is never scanned, baked or offered. Section
 names in the template course become the preset categories.
+
+The **recommended section** names a section of the *teacher's* course, not of the template course,
+so it is free text rather than a choice. It never restricts anything: a preset can still be added to
+any section. On the preset activities page it is shown as a **pseudo tag** after the tags — the same
+pill, with a staggered-bars icon and the accent tint of the group counts — and it is offered in the
+tag bar as a filter of its own. A tag
+and a section that share a name stay two separate filters. Whitespace is collapsed on save so that
+two presets meant for the same section cannot end up as two filters over a doubled space.
 
 ### Adding a preset to a course
 
@@ -103,7 +112,7 @@ Weekly teaching cycle [Template]
 Everything else follows the ordinary rules. Each activity in that section still needs its own
 **Preset details** — that is what gets it a backup — and the section's own **summary** becomes the
 template's description. The card shows the section name without the marker, the distinct activity
-types it contains, and the combined tags of its members. Its icon is the icon of the **first**
+types it contains, and the combined tags and recommended sections of its members. Its icon is the icon of the **first**
 activity in the section, so putting the activity a teacher would recognise the set by at the top of
 the section is worth doing.
 
@@ -242,6 +251,12 @@ re-point everyone's stars.
 `edpreset_item.title` is copied from `edpreset_meta.presetname`, not from the exemplar's activity
 name: an inline rename on the course page fires `course_module_updated` without running the settings
 form's post actions, so the two must stay independent.
+
+`edpreset_item.recommendedsection` is copied from `edpreset_meta` just as `tags` is, because the
+chooser page builds itself from preset rows alone. On the page, a card's section keys travel as a
+JSON array (`data-sectionkeys`) rather than the pipe-separated list the tags use (`data-tagkeys`):
+section names routinely contain a pipe — `Nau mai | Welcome` is exactly the kind of name the field
+exists for — and splitting on it would break the filter.
 
 ### Section templates
 

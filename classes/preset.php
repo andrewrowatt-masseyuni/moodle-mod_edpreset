@@ -87,6 +87,8 @@ class preset extends persistent {
             'description' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
+            // Copied from the curator's details. Shown on the preset chooser page as a pseudo tag.
+            'recommendedsection' => ['type' => PARAM_TEXT, 'default' => ''],
             'icon' => ['type' => PARAM_SAFEDIR, 'default' => 'monologo'],
             'archetype' => ['type' => PARAM_INT, 'default' => MOD_ARCHETYPE_OTHER],
             'purpose' => ['type' => PARAM_ALPHA, 'default' => MOD_PURPOSE_OTHER],

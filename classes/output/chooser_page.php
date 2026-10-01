@@ -151,7 +151,9 @@ class chooser_page implements renderable, templatable {
         $data->sectionactivitycount = $this->count_section_activities();
         $data->sesskey = sesskey();
         $data->alltags = $this->export_tags($tagsource);
-        $data->hastags = !empty($data->alltags);
+        $data->allsections = $this->export_sections($tagsource);
+        // The recommended sections are pseudo tags, so they alone are enough to warrant a tag bar.
+        $data->hastags = !empty($data->alltags) || !empty($data->allsections);
         // Where the page's form posts the selection. The ids themselves are filled in client-side.
         $data->copyurl = (new moodle_url('/mod/edpreset/copy.php'))->out(false);
 
@@ -280,6 +282,7 @@ class chooser_page implements renderable, templatable {
      */
     protected function export_template_card(section_template $template, string $usedtemplate = ''): stdClass {
         $tags = $template->get_tags();
+        $sections = $template->get_recommended_sections();
         $summary = $template->get_summary();
         $modulenames = $template->get_module_names();
 
@@ -311,8 +314,7 @@ class chooser_page implements renderable, templatable {
             && $usedtemplate === $template->get_name();
         $card->count = $template->count_members();
         $card->addurl = $this->template_add_url($template->get_sectionnum())->out(false);
-        $card->tags = array_map(fn($tag) => (object)['name' => $tag], $tags);
-        $card->hastags = !empty($tags);
+        $this->export_card_tags($card, $tags, $sections);
 
         // The same flattening the preset cards get, so one filter pass covers both kinds of card.
         // Module names are included so that searching for "Quiz" finds the sets containing one.
@@ -322,9 +324,9 @@ class chooser_page implements renderable, templatable {
                 . ' ' . html_to_text($summary, 0, false)
                 . ' ' . implode(' ', $modulenames)
                 . ' ' . implode(' ', $tags)
+                . ' ' . implode(' ', $sections)
             )
         );
-        $card->tagkeys = \core_text::strtolower(implode('|', $tags));
 
         return $card;
     }
@@ -375,6 +377,8 @@ class chooser_page implements renderable, templatable {
         $presetid = (int)$preset->get('id');
         $description = (string)$preset->get('description');
         $tags = meta::split_tags((string)$preset->get('tags'));
+        $section = (string)$preset->get('recommendedsection');
+        $sections = $section !== '' ? [$section] : [];
 
         $card = new stdClass();
         $card->presetid = $presetid;
@@ -389,8 +393,7 @@ class chooser_page implements renderable, templatable {
         $card->branded = (bool)$preset->get('branded');
         $card->favourited = in_array($presetid, $favourites, true);
         $card->addurl = $this->add_url($presetid)->out(false);
-        $card->tags = array_map(fn($tag) => (object)['name' => $tag], $tags);
-        $card->hastags = !empty($tags);
+        $this->export_card_tags($card, $tags, $sections);
 
         // Everything the in-page text filter matches against, flattened once here so the browser
         // does not have to walk the DOM for it on every keystroke.
@@ -399,11 +402,34 @@ class chooser_page implements renderable, templatable {
                 $card->title
                 . ' ' . html_to_text($description, 0, false)
                 . ' ' . implode(' ', $tags)
+                . ' ' . implode(' ', $sections)
             )
         );
-        $card->tagkeys = \core_text::strtolower(implode('|', $tags));
 
         return $card;
+    }
+
+    /**
+     * Add the tags and recommended sections to a card, for display and for the in-page filter.
+     *
+     * The sections are pseudo tags: they share the card's tag row and are filtered on in the same
+     * way, but keep keys of their own, so a tag and a section that happen to share a name stay
+     * separate filters.
+     *
+     * Their keys are JSON rather than pipe separated like the tags', because section names
+     * routinely contain the pipe - "Nau mai | Welcome" is the kind of name this field exists for.
+     *
+     * @param stdClass $card The card being exported.
+     * @param string[] $tags The card's tags.
+     * @param string[] $sections The card's recommended sections.
+     */
+    protected function export_card_tags(stdClass $card, array $tags, array $sections): void {
+        $card->tags = array_map(fn($tag) => (object)['name' => $tag], $tags);
+        $card->sections = array_map(fn($section) => (object)['name' => $section], $sections);
+        // Whether the tag row has anything in it at all.
+        $card->hastags = !empty($tags) || !empty($sections);
+        $card->tagkeys = \core_text::strtolower(implode('|', $tags));
+        $card->sectionkeys = json_encode(array_map(fn($section) => \core_text::strtolower($section), $sections));
     }
 
     /**
@@ -423,6 +449,29 @@ class chooser_page implements renderable, templatable {
         \core_collator::asort($seen);
 
         return array_map(fn($tag) => (object)['name' => $tag], array_values($seen));
+    }
+
+    /**
+     * Every recommended section in use, for the filter bar's section pseudo tags.
+     *
+     * @param preset[] $presets The presets on the page.
+     * @return stdClass[]
+     */
+    protected function export_sections(array $presets): array {
+        $seen = [];
+        foreach ($presets as $preset) {
+            // First spelling wins, as in section_template::get_recommended_sections(): the button
+            // here and the one on a template card have to read the same.
+            $section = (string)$preset->get('recommendedsection');
+            $key = \core_text::strtolower($section);
+            if ($section !== '' && !isset($seen[$key])) {
+                $seen[$key] = $section;
+            }
+        }
+
+        \core_collator::asort($seen);
+
+        return array_map(fn($section) => (object)['name' => $section], array_values($seen));
     }
 
     /**

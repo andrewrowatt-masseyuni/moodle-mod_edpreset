@@ -237,6 +237,7 @@ class baker {
         $preset->set('description', self::render_description($details));
         $preset->set('tags', $details->get('tags'));
         $preset->set('defaultname', $details->get('defaultname'));
+        $preset->set('recommendedsection', $details->get('recommendedsection'));
         $preset->set('category', $sectiondata['category']);
         $preset->set('templatename', $sectiondata['templatename']);
         $preset->set('templatesummary', $sectiondata['templatesummary']);

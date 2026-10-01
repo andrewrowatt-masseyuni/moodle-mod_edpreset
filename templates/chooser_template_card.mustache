@@ -23,8 +23,8 @@
     Deliberately carries data-templatesection rather than data-presetid. mod_edpreset/chooser parses
     data-presetid and then dereferences the card's select button without checking it exists, so a
     card with a preset id but no select button would throw the moment anything tried to select one.
-    It does carry data-searchtext and data-tagkeys, because the filter walks every card in a group
-    and reads both unguarded.
+    It does carry data-searchtext, data-tagkeys and data-sectionkeys, because the filter walks every
+    card in a group and reads all three.
 
     Context variables required for this template:
     * templatesection int - section number in the template course; the template's identity
@@ -41,10 +41,14 @@
     * modfullname string - the distinct activity types, e.g. "Book, Page, Quiz"
     * count int - how many activities the template adds
     * addurl string - a copy.php link carrying the template
-    * searchtext string - lowercased title, description, activity types and tags, for the filter
+    * searchtext string - lowercased title, description, activity types, tags and recommended sections,
+      for the filter
     * tagkeys string - lowercased tags, pipe separated, for the in-page tag filter
-    * hastags bool
+    * sectionkeys string - lowercased recommended sections as a JSON array, for the same filter. JSON
+      rather than pipes because section names contain pipes, e.g. "Nau mai | Welcome"
+    * hastags bool - whether there are any tags or recommended sections to show
     * tags array - name
+    * sections array - name; recommended sections, shown as pseudo tags after the tags
 
     Example context (json):
     {
@@ -62,8 +66,10 @@
         "addurl": "https://moodle.local/mod/edpreset/copy.php?template=3",
         "searchtext": "weekly teaching cycle book page quiz",
         "tagkeys": "engage with content",
+        "sectionkeys": "[\"nau mai | welcome\"]",
         "hastags": true,
-        "tags": [{"name": "Engage with content"}]
+        "tags": [{"name": "Engage with content"}],
+        "sections": [{"name": "Nau mai | Welcome"}]
     }
 }}
 {{!
@@ -77,6 +83,7 @@
      data-title="{{title}}"
      data-searchtext="{{searchtext}}"
      data-tagkeys="{{tagkeys}}"
+     data-sectionkeys="{{sectionkeys}}"
 >
 <div class="card edpreset-card edpreset-template-card {{#locked}}edpreset-card-locked{{/locked}}">
     <div class="card-body d-flex flex-column">
@@ -111,6 +118,9 @@
                             aria-label="{{#str}} chooser:filterbytag, mod_edpreset, {{name}} {{/str}}"
                     >{{name}}</button>
                 {{/tags}}
+                {{#sections}}
+                    {{> mod_edpreset/chooser_section_tag }}
+                {{/sections}}
             </div>
         {{/hastags}}
 

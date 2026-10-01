@@ -42,6 +42,7 @@ final class form_elements_test extends \advanced_testcase {
         'edpreset_description',
         'edpreset_tags',
         'edpreset_defaultname',
+        'edpreset_recommendedsection',
     ];
 
     /**
@@ -286,6 +287,7 @@ final class form_elements_test extends \advanced_testcase {
                 'description' => '<p>Use this for a <strong>weekly</strong> reading.</p>',
                 'tags' => 'Content, Engage with content',
                 'defaultname' => 'This week\'s reading',
+                'recommendedsection' => 'Nau mai | Welcome',
             ]]],
         ]);
 
@@ -308,6 +310,7 @@ final class form_elements_test extends \advanced_testcase {
 
         $this->assertSame('Content, Engage with content', $mform->getElement('edpreset_tags')->getValue());
         $this->assertSame("This week's reading", $mform->getElement('edpreset_defaultname')->getValue());
+        $this->assertSame('Nau mai | Welcome', $mform->getElement('edpreset_recommendedsection')->getValue());
     }
 
     /**
@@ -379,9 +382,11 @@ final class form_elements_test extends \advanced_testcase {
             'edpreset_presetname' => str_repeat('a', meta::PRESETNAME_MAXLENGTH + 1),
             'edpreset_description' => self::editor('<p>Fine.</p>'),
             'edpreset_defaultname' => str_repeat('b', meta::DEFAULTNAME_MAXLENGTH + 1),
+            'edpreset_recommendedsection' => str_repeat('c', meta::RECOMMENDEDSECTION_MAXLENGTH + 1),
         ]);
         $this->assertArrayHasKey('edpreset_presetname', $errors);
         $this->assertArrayHasKey('edpreset_defaultname', $errors);
+        $this->assertArrayHasKey('edpreset_recommendedsection', $errors);
         $this->assertArrayNotHasKey('edpreset_description', $errors);
 
         // The optional fields left empty, with the required ones complete, must still pass.
@@ -484,6 +489,8 @@ final class form_elements_test extends \advanced_testcase {
             // Duplicates differing only in case collapse to the first spelling seen.
             'edpreset_tags' => ' Content ,, engage with content, CONTENT ',
             'edpreset_defaultname' => 'This week\'s reading',
+            // Whitespace is collapsed so the chooser does not offer two filters for one section.
+            'edpreset_recommendedsection' => '  Nau mai  |   Welcome ',
         ];
 
         $returned = mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course);
@@ -494,6 +501,7 @@ final class form_elements_test extends \advanced_testcase {
         $this->assertSame('Weekly reading', $stored->get('presetname'));
         $this->assertSame('<p>Use this for a weekly reading.</p>', $stored->get('description'));
         $this->assertSame('Content, engage with content', $stored->get('tags'));
+        $this->assertSame('Nau mai | Welcome', $stored->get('recommendedsection'));
 
         // The format has to be stored alongside the text: it is what the baker renders with.
         $this->assertSame((int)FORMAT_HTML, (int)$stored->get('descriptionformat'));

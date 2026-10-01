@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="mod/edpreset/db" VERSION="20260925" COMMENT="XMLDB file for Moodle mod_edpreset"
+<XMLDB PATH="mod/edpreset/db" VERSION="20261002" COMMENT="XMLDB file for Moodle mod_edpreset"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
 >
@@ -32,6 +32,7 @@
         <FIELD NAME="description" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Cleaned HTML rendered from edpreset_meta.description, in edpreset_meta.descriptionformat, at bake time. Shown on the preset chooser page's cards."/>
         <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Normalised comma-separated tags, copied from edpreset_meta.tags"/>
         <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied. 250 not 255: cmactions::rename() rejects anything over 255 and its clean_param(PARAM_CLEANHTML) can lengthen the string."/>
+        <FIELD NAME="recommendedsection" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Copied from edpreset_meta.recommendedsection. Shown on the preset chooser page as a filterable pseudo tag."/>
         <FIELD NAME="icon" TYPE="char" LENGTH="100" NOTNULL="true" DEFAULT="monologo" SEQUENCE="false" COMMENT="pix icon name. The component is always mod_&lt;modname&gt;. Rendered HTML is deliberately not stored."/>
         <FIELD NAME="archetype" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="MOD_ARCHETYPE_* of the exemplar - decides the chooser tab"/>
         <FIELD NAME="purpose" TYPE="char" LENGTH="30" NOTNULL="true" DEFAULT="other" SEQUENCE="false" COMMENT="MOD_PURPOSE_* of the exemplar - decides the icon colour"/>
@@ -75,6 +76,7 @@
         <FIELD NAME="descriptionformat" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="FORMAT_* the description was typed in. FORMAT_HTML from the rich text editor, but not assumed to be: a site running the plain textarea editor is still offered the whole format menu, and the baker renders with whatever is stored here."/>
         <FIELD NAME="tags" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Normalised comma-separated list, e.g. 'Assessment, Engage with content'"/>
         <FIELD NAME="defaultname" TYPE="char" LENGTH="250" NOTNULL="true" SEQUENCE="false" COMMENT="Name given to the activity when the preset is copied into a course. See edpreset_item.defaultname for why 250."/>
+        <FIELD NAME="recommendedsection" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Name of the section in a teacher's course this preset is meant for, e.g. 'Nau mai | Welcome'. Advisory only: nothing stops the preset being added to any other section."/>
         <FIELD NAME="usermodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>

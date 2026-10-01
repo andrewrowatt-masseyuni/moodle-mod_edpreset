@@ -55,5 +55,29 @@ function xmldb_edpreset_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026092500, 'edpreset');
     }
 
+    if ($oldversion < 2026100200) {
+        // The section of a teacher's course a preset is meant for. Curator input on edpreset_meta,
+        // denormalised onto edpreset_item by the next rebuild exactly as tags are. Existing rows
+        // take '' - no recommendation - which is what the chooser already shows for them.
+        foreach (['edpreset_meta', 'edpreset_item'] as $tablename) {
+            $table = new xmldb_table($tablename);
+            $field = new xmldb_field(
+                'recommendedsection',
+                XMLDB_TYPE_CHAR,
+                '255',
+                null,
+                XMLDB_NOTNULL,
+                null,
+                null,
+                'defaultname'
+            );
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+
+        upgrade_mod_savepoint(true, 2026100200, 'edpreset');
+    }
+
     return true;
 }

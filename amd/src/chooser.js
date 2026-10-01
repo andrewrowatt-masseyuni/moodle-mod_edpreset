@@ -60,6 +60,14 @@ const PREFERENCE_MAXLENGTH = 1333;
 /** Active tag filters, lowercased. Empty means "no tag filter", not "match nothing". */
 const activeTags = new Set();
 
+/**
+ * Active recommended section filters, lowercased.
+ *
+ * Sections are pseudo tags: they filter exactly as tags do, but are kept apart so that a tag and a
+ * section sharing a name are two filters rather than one.
+ */
+const activeSections = new Set();
+
 /** Selected preset ids, in the order they were chosen. */
 const selected = new Set();
 
@@ -74,7 +82,7 @@ let searchTerm = '';
  *
  * @returns {boolean}
  */
-const isFiltering = () => searchTerm !== '' || activeTags.size > 0;
+const isFiltering = () => searchTerm !== '' || activeTags.size > 0 || activeSections.size > 0;
 
 /**
  * How many activities the target section already holds.
@@ -86,6 +94,24 @@ const isFiltering = () => searchTerm !== '' || activeTags.size > 0;
  */
 const sectionActivityCount = () =>
     parseInt(root.querySelector(SELECTORS.ADDFORM)?.dataset.sectionactivitycount ?? '0', 10);
+
+/**
+ * The active filter set a tag button belongs to.
+ *
+ * @param {HTMLElement} button A [data-action="tag"] button.
+ * @returns {Set<string>}
+ */
+const filterSetFor = (button) => (button.dataset.tagtype === 'section' ? activeSections : activeTags);
+
+/**
+ * A card's recommended section keys.
+ *
+ * JSON rather than the pipe-separated list the tags use, because section names contain pipes.
+ *
+ * @param {HTMLElement} card
+ * @returns {string[]}
+ */
+const sectionKeys = (card) => (card.dataset.sectionkeys ? JSON.parse(card.dataset.sectionkeys) : []);
 
 /**
  * Ask the teacher where a section template's activities should go.
@@ -109,7 +135,8 @@ const openReorder = (templatesection, templatetitle) => {
  * Whether one card survives the current filters.
  *
  * The text query and the tag set are ANDed, but the tags are ORed with each other: clicking a
- * second tag widens the result, which is what makes the tag bar usable for browsing.
+ * second tag widens the result, which is what makes the tag bar usable for browsing. Recommended
+ * sections are pseudo tags and join the same OR.
  *
  * @param {HTMLElement} card
  * @returns {boolean}
@@ -118,13 +145,14 @@ const cardMatches = (card) => {
     if (searchTerm !== '' && !card.dataset.searchtext.includes(searchTerm)) {
         return false;
     }
-    if (activeTags.size === 0) {
+    if (activeTags.size === 0 && activeSections.size === 0) {
         return true;
     }
 
     const tags = card.dataset.tagkeys ? card.dataset.tagkeys.split('|') : [];
 
-    return tags.some((tag) => activeTags.has(tag));
+    return tags.some((tag) => activeTags.has(tag))
+        || sectionKeys(card).some((section) => activeSections.has(section));
 };
 
 /**
@@ -196,7 +224,7 @@ const applyFilters = () => {
  */
 const refreshTagButtons = () => {
     root.querySelectorAll(SELECTORS.TAG).forEach((button) => {
-        const active = activeTags.has(button.dataset.tag.toLowerCase());
+        const active = filterSetFor(button).has(button.dataset.tag.toLowerCase());
         button.classList.toggle('edpreset-tag-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
@@ -337,10 +365,11 @@ export const init = () => {
         const tag = event.target.closest(SELECTORS.TAG);
         if (tag) {
             const key = tag.dataset.tag.toLowerCase();
-            if (activeTags.has(key)) {
-                activeTags.delete(key);
+            const active = filterSetFor(tag);
+            if (active.has(key)) {
+                active.delete(key);
             } else {
-                activeTags.add(key);
+                active.add(key);
             }
             refreshTagButtons();
             applyFilters();
@@ -388,6 +417,7 @@ export const init = () => {
             }
             searchTerm = '';
             activeTags.clear();
+            activeSections.clear();
             clearSearch?.classList.add('d-none');
             refreshTagButtons();
             applyFilters();

@@ -1,0 +1,43 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_edpreset/chooser_section_tag
+
+    A recommended section, shown as a pseudo tag: on a preset card, on a section template card and in
+    the filter bar. One partial for all three, because mod_edpreset/chooser keys a filter off
+    data-tag and data-tagtype together and the three copies must never disagree on either.
+
+    data-tagtype="section" is what keeps it a filter of its own, separate from an ordinary tag that
+    happens to share its name.
+
+    Context variables required for this template:
+    * name string - the section name, as the curator typed it
+
+    Example context (json):
+    {
+        "name": "Nau mai | Welcome"
+    }
+}}
+<button type="button"
+        class="edpreset-tag edpreset-tag-section"
+        data-action="tag"
+        data-tagtype="section"
+        data-tag="{{name}}"
+        aria-pressed="false"
+        aria-label="{{#str}} chooser:filterbysection, mod_edpreset, {{name}} {{/str}}"
+        title="{{#str}} chooser:recommendedsection, mod_edpreset {{/str}}"
+><i class="fa fa-solid fa-bars-staggered" aria-hidden="true"></i>{{name}}</button>

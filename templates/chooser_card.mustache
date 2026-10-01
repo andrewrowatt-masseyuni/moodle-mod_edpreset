@@ -34,10 +34,13 @@
     * branded bool
     * favourited bool
     * addurl string - a copy.php link that ends on the new activity's settings form
-    * searchtext string - lowercased name, description and tags, for the in-page text filter
+    * searchtext string - lowercased name, description, tags and recommended sections, for the text filter
     * tagkeys string - lowercased tags, pipe separated, for the in-page tag filter
-    * hastags bool
+    * sectionkeys string - lowercased recommended sections as a JSON array, for the same filter. JSON
+      rather than pipes because section names contain pipes, e.g. "Nau mai | Welcome"
+    * hastags bool - whether there are any tags or recommended sections to show
     * tags array - name
+    * sections array - name; recommended sections, shown as pseudo tags after the tags
 
     Example context (json):
     {
@@ -53,8 +56,10 @@
         "addurl": "https://moodle.local/mod/edpreset/copy.php?preset=7",
         "searchtext": "reflective journal assessment",
         "tagkeys": "assessment",
+        "sectionkeys": "[\"nau mai | welcome\"]",
         "hastags": true,
-        "tags": [{"name": "Assessment"}]
+        "tags": [{"name": "Assessment"}],
+        "sections": [{"name": "Nau mai | Welcome"}]
     }
 }}
 <div class="card edpreset-card"
@@ -63,6 +68,7 @@
      data-title="{{title}}"
      data-searchtext="{{searchtext}}"
      data-tagkeys="{{tagkeys}}"
+     data-sectionkeys="{{sectionkeys}}"
 >
     <div class="card-body d-flex flex-column">
         <div class="d-flex align-items-center mb-2">
@@ -108,6 +114,9 @@
                             aria-label="{{#str}} chooser:filterbytag, mod_edpreset, {{name}} {{/str}}"
                     >{{name}}</button>
                 {{/tags}}
+                {{#sections}}
+                    {{> mod_edpreset/chooser_section_tag }}
+                {{/sections}}
             </div>
         {{/hastags}}
 
