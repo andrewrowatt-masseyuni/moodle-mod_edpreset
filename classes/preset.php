@@ -16,11 +16,15 @@
 
 namespace mod_edpreset;
 
+use cm_info;
 use core\persistent;
-use stored_file;
 
 /**
  * One pseudo activity, derived from an exemplar activity in the template course.
+ *
+ * Nothing is stored for a preset but its description. A copy backs the exemplar up and restores it
+ * there and then (see local\activity_copier), so there is no archive to keep in step with the
+ * exemplar, and what a teacher gets is always the exemplar as it stands.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -29,30 +33,6 @@ use stored_file;
 class preset extends persistent {
     /** @var string Table name. */
     public const TABLE = 'edpreset_item';
-
-    /** @var string Queued for baking; no archive is being produced yet. */
-    public const STATUS_PENDING = 'pending';
-
-    /** @var string A backup is being produced. */
-    public const STATUS_BAKING = 'baking';
-
-    /** @var string An archive is staged and awaiting its test restore. */
-    public const STATUS_VALIDATING = 'validating';
-
-    /** @var string A validated archive is live. */
-    public const STATUS_READY = 'ready';
-
-    /** @var string The bake or the validation failed; see statusdetail. */
-    public const STATUS_FAILED = 'failed';
-
-    /** @var string File area holding the archive currently being validated. */
-    public const FILEAREA_STAGING = 'presetstaging';
-
-    /** @var string File area holding the untouched backup, used if a scrub breaks the restore. */
-    public const FILEAREA_UNSCRUBBED = 'presetunscrubbed';
-
-    /** @var string File area holding the validated, live archive the chooser offers. */
-    public const FILEAREA_BACKUP = 'presetbackup';
 
     /**
      * Component the preset chooser page's stars are recorded against.
@@ -68,6 +48,9 @@ class preset extends persistent {
     /** @var string Item type the preset chooser page's stars are recorded against. */
     public const FAVOURITE_ITEMTYPE = 'preset';
 
+    /** @var int How much of a copy failure's message is kept for the manage page. */
+    protected const LASTERROR_MAXLENGTH = 1000;
+
     /**
      * Define the properties of this persistent.
      *
@@ -82,8 +65,8 @@ class preset extends persistent {
             'contextid' => ['type' => PARAM_INT],
             'title' => ['type' => PARAM_TEXT],
             'help' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
-            // Cleaned HTML, rendered from the curator's markdown at bake time. PARAM_RAW because
-            // the cleaning has already happened; it must never be re-cleaned or escaped here.
+            // Cleaned HTML, rendered from the curator's text when the preset is scanned. PARAM_RAW
+            // because the cleaning has already happened; it must never be re-cleaned or escaped here.
             'description' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
@@ -102,30 +85,17 @@ class preset extends persistent {
             'templaterestricted' => ['type' => PARAM_BOOL, 'default' => 0],
             // The exemplar's section summary: a template card's description, or the text under an
             // ordinary section's heading. Cleaned HTML like description, and PARAM_RAW for the same
-            // reason: the cleaning has already happened at bake time and must not be repeated or
-            // escaped here.
+            // reason: the cleaning has already happened and must not be repeated or escaped here.
             'sectionsummary' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'sectionnum' => ['type' => PARAM_INT, 'default' => 0],
             'sortorder' => ['type' => PARAM_INT, 'default' => 0],
-            'status' => [
-                'type' => PARAM_ALPHA,
-                'default' => self::STATUS_PENDING,
-                'choices' => [
-                    self::STATUS_PENDING,
-                    self::STATUS_BAKING,
-                    self::STATUS_VALIDATING,
-                    self::STATUS_READY,
-                    self::STATUS_FAILED,
-                ],
-            ],
-            'statusdetail' => ['type' => PARAM_TEXT, 'default' => '', 'null' => NULL_ALLOWED],
-            'datescleared' => ['type' => PARAM_TEXT, 'default' => '', 'null' => NULL_ALLOWED],
-            'scrubbed' => ['type' => PARAM_BOOL, 'default' => 0],
-            'backupcontenthash' => ['type' => PARAM_ALPHANUM, 'default' => null, 'null' => NULL_ALLOWED],
-            'backupfilesize' => ['type' => PARAM_INT, 'default' => 0],
-            'backuptimebaked' => ['type' => PARAM_INT, 'default' => 0],
-            'timevalidated' => ['type' => PARAM_INT, 'default' => 0],
-            'exemplartimemodified' => ['type' => PARAM_INT, 'default' => 0],
+            // The curator's release status, copied from the preset details. See is_offered().
+            'status' => ['type' => PARAM_ALPHA, 'default' => meta::STATUS_DRAFT, 'choices' => meta::STATUSES],
+            // Copied from the preset details: whether the standard activity chooser offers it too.
+            'showinchooser' => ['type' => PARAM_BOOL, 'default' => 0],
+            // Written by record_copy_error() and clear_copy_error() only - see there for why.
+            'lasterror' => ['type' => PARAM_TEXT, 'default' => '', 'null' => NULL_ALLOWED],
+            'timelasterror' => ['type' => PARAM_INT, 'default' => 0],
             'enabled' => ['type' => PARAM_BOOL, 'default' => 1],
         ];
     }
@@ -143,68 +113,102 @@ class preset extends persistent {
     }
 
     /**
-     * Whether this preset has a validated archive and may therefore be offered in the chooser.
+     * Whether this preset may be offered to someone.
      *
-     * This, not the status field, is the gate on chooser visibility. Two things follow: a preset
-     * can never appear without a proven backup behind it, and a re-bake in flight does not pull a
-     * working preset out of the chooser.
+     * The release status alone decides it. A released preset is offered to everyone who may add
+     * presets at all; one ready for review only to those who can review presets; a draft or an
+     * archived one to nobody.
      *
+     * @param bool $canreview Whether the user holds mod/edpreset:reviewpresets where it would be added.
      * @return bool
      */
-    public function is_live(): bool {
+    public function is_offered(bool $canreview): bool {
         if (!$this->get('enabled')) {
             return false;
         }
-        $file = $this->get_live_file();
-        return $file && $file->get_contenthash() === $this->get('backupcontenthash');
+
+        return match ($this->get('status')) {
+            meta::STATUS_RELEASED => true,
+            meta::STATUS_REVIEW => $canreview,
+            default => false,
+        };
     }
 
     /**
-     * Get the validated archive that the chooser offers.
+     * Whether this preset is offered only because the user can review presets.
      *
-     * @return stored_file|false
+     * @return bool
      */
-    public function get_live_file() {
-        return $this->get_file(self::FILEAREA_BACKUP);
+    public function is_in_review(): bool {
+        return $this->get('status') === meta::STATUS_REVIEW;
     }
 
     /**
-     * Get the archive awaiting validation.
+     * The exemplar this preset copies, as it is now.
      *
-     * @return stored_file|false
+     * @return cm_info|null Null if the exemplar has gone, or is on its way out.
      */
-    public function get_staging_file() {
-        return $this->get_file(self::FILEAREA_STAGING);
+    public function get_exemplar(): ?cm_info {
+        $courseid = (int)$this->get('templatecourseid');
+        if (!$courseid) {
+            return null;
+        }
+
+        try {
+            $cm = get_fast_modinfo($courseid)->get_cm((int)$this->get('templatecmid'));
+        } catch (\moodle_exception $e) {
+            return null;
+        }
+
+        return $cm->deletioninprogress ? null : $cm;
     }
 
     /**
-     * Get the untouched backup kept as a fallback in case a scrub rule broke the restore.
+     * Record why a copy of this preset failed, for the manage page.
      *
-     * @return stored_file|false
+     * Written straight to the table rather than through update(): this runs in a teacher's request,
+     * and the persistent would stamp that teacher into usermodified, which the privacy provider
+     * declares as the curator who last saved the preset.
+     *
+     * @param string $error What went wrong.
      */
-    public function get_unscrubbed_file() {
-        return $this->get_file(self::FILEAREA_UNSCRUBBED);
+    public function record_copy_error(string $error): void {
+        global $DB;
+
+        $error = \core_text::substr($error, 0, self::LASTERROR_MAXLENGTH);
+        $now = time();
+
+        $DB->update_record(self::TABLE, (object)[
+            'id' => $this->get('id'),
+            'lasterror' => $error,
+            'timelasterror' => $now,
+        ]);
+
+        // Keep this instance in step without going through set(), which would mark it changed.
+        $this->raw_set('lasterror', $error);
+        $this->raw_set('timelasterror', $now);
     }
 
     /**
-     * Get this preset's archive from one of the plugin's system-context file areas.
+     * Forget the last copy failure, once a copy has worked again.
      *
-     * This plugin serves no files at all - it has no pluginfile callback - so there is no URL that
-     * reaches any of these archives.
-     *
-     * @param string $filearea One of the FILEAREA_* constants.
-     * @return stored_file|false
+     * Only writes when there is something to forget, since this runs on every successful copy.
      */
-    protected function get_file(string $filearea) {
-        $files = get_file_storage()->get_area_files(
-            \context_system::instance()->id,
-            'mod_edpreset',
-            $filearea,
-            $this->get('id'),
-            'itemid',
-            false
-        );
-        return $files ? reset($files) : false;
+    public function clear_copy_error(): void {
+        global $DB;
+
+        if ((string)$this->get('lasterror') === '' && !$this->get('timelasterror')) {
+            return;
+        }
+
+        $DB->update_record(self::TABLE, (object)[
+            'id' => $this->get('id'),
+            'lasterror' => null,
+            'timelasterror' => 0,
+        ]);
+
+        $this->raw_set('lasterror', null);
+        $this->raw_set('timelasterror', 0);
     }
 
     /**
@@ -228,15 +232,5 @@ class preset extends persistent {
             $modname,
             ['class' => "mod_edpreset-icon activityicon $iconclass"]
         );
-    }
-
-    /**
-     * The module context of the exemplar this preset was made from.
-     *
-     * @return \context_module|null Null if the exemplar has since been deleted.
-     */
-    public function get_exemplar_context(): ?\context_module {
-        $context = \context::instance_by_id($this->get('contextid'), IGNORE_MISSING);
-        return ($context instanceof \context_module) ? $context : null;
     }
 }

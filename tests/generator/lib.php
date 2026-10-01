@@ -43,21 +43,20 @@ class mod_edpreset_generator extends testing_module_generator {
     /**
      * Create a preset record.
      *
-     * By default the preset is made "live" - given a backup file whose contenthash matches the
-     * record - because that is what the chooser gates on. Pass 'live' => false for a preset that
-     * exists but is not yet offered.
+     * The record alone, with no exemplar behind it: enough for anything that only lists presets.
+     * A test that copies one needs a real exemplar, which create_template_course() and scan()
+     * provide.
      *
-     * @param array $record Overrides for the preset fields, plus the pseudo-fields 'live' and
-     *                      'backupcontent'.
+     * Released and shown in the activity chooser by default, so that a bare preset is offered
+     * everywhere a preset can be. Pass 'status' for one the curator has not released, and
+     * 'showinchooser' => 0 for one offered only on the preset chooser page.
+     *
+     * @param array $record Overrides for the preset fields.
      * @return preset
      */
     public function create_preset(array $record = []): preset {
         static $counter = 0;
         $counter++;
-
-        $live = $record['live'] ?? true;
-        $backupcontent = $record['backupcontent'] ?? "not a real backup, preset $counter";
-        unset($record['live'], $record['backupcontent']);
 
         $record += [
             'templatecourseid' => 0,
@@ -72,46 +71,14 @@ class mod_edpreset_generator extends testing_module_generator {
             'sortorder' => 1000 + $counter,
             'archetype' => MOD_ARCHETYPE_ASSIGNMENT,
             'purpose' => MOD_PURPOSE_ASSESSMENT,
-            'status' => $live ? preset::STATUS_READY : preset::STATUS_PENDING,
+            'status' => meta::STATUS_RELEASED,
+            'showinchooser' => 1,
         ];
 
         $preset = new preset(0, (object)$record);
         $preset->create();
 
-        if ($live) {
-            $this->attach_backup($preset, $backupcontent, preset::FILEAREA_BACKUP);
-        }
-
         return $preset;
-    }
-
-    /**
-     * Attach an archive to a preset and record its contenthash, making the preset live.
-     *
-     * @param preset $preset The preset.
-     * @param string $content The file content.
-     * @param string $filearea One of preset::FILEAREA_BACKUP or preset::FILEAREA_STAGING.
-     * @return stored_file
-     */
-    public function attach_backup(preset $preset, string $content, string $filearea): stored_file {
-        $file = get_file_storage()->create_file_from_string([
-            'contextid' => \context_system::instance()->id,
-            'component' => 'mod_edpreset',
-            'filearea' => $filearea,
-            'itemid' => $preset->get('id'),
-            'filepath' => '/',
-            'filename' => 'preset_' . $preset->get('id') . '.mbz',
-        ], $content);
-
-        if ($filearea === preset::FILEAREA_BACKUP) {
-            $preset->set('backupcontenthash', $file->get_contenthash());
-            $preset->set('backupfilesize', $file->get_filesize());
-            $preset->set('backuptimebaked', time());
-            $preset->set('timevalidated', time());
-            $preset->update();
-        }
-
-        return $file;
     }
 
     /**
@@ -132,10 +99,10 @@ class mod_edpreset_generator extends testing_module_generator {
         $fields += [
             'cmid' => $cmid,
             'presetname' => 'Test preset ' . $counter,
-            // The shape the rich text editor writes, so what the baker renders here is what it
+            // The shape the rich text editor writes, so what the scan renders here is what it
             // renders in production. Both formats are stated rather than left to the persistent's
-            // default, because the format is what decides how the text is rendered at bake time and
-            // a test overriding the text should be able to see which format it is overriding.
+            // default, because the format is what decides how the text is rendered and a test
+            // overriding the text should be able to see which format it is overriding.
             'description' => '<p>Description of test preset ' . $counter . '</p>',
             'descriptionformat' => FORMAT_HTML,
             'tags' => '',
@@ -143,6 +110,11 @@ class mod_edpreset_generator extends testing_module_generator {
             // that should only happen in the tests that are about it.
             'defaultname' => '',
             'recommendedsection' => '',
+            // Released rather than the draft a curator starts with: a fixture stands for a preset
+            // that is being offered, and the tests about drafts say so.
+            'status' => meta::STATUS_RELEASED,
+            // Off, as on the form: only the tests about the activity chooser put a preset there.
+            'showinchooser' => 0,
         ];
 
         $meta = new meta(0, (object)$fields);
@@ -283,6 +255,8 @@ class mod_edpreset_generator extends testing_module_generator {
             'tags',
             'defaultname',
             'recommendedsection',
+            'status',
+            'showinchooser',
         ];
 
         $this->create_metadata($cmid, array_filter(
@@ -293,22 +267,11 @@ class mod_edpreset_generator extends testing_module_generator {
     }
 
     /**
-     * Run the whole bake pipeline to completion, as cron would.
+     * Scan the template course, as the queued rebuild would.
      *
-     * Behat and any test that copies a preset need archives that genuinely restore, which the fake
-     * ones attach_backup() writes are not. This rescans the template course and then drains the
-     * adhoc tasks the rescan queued, so that presets come out the far end live.
+     * Nothing else is needed before a preset can be copied: the copy takes its own backup.
      */
-    public function run_pipeline(): void {
+    public function scan(): void {
         \mod_edpreset\local\baker::rebuild();
-
-        // Both task types re-queue work for the other, so this drains until nothing is left rather
-        // than making one pass: a bake queues its own validation.
-        while ($task = \core\task\manager::get_next_adhoc_task(time())) {
-            if (str_starts_with(get_class($task), 'mod_edpreset\\task\\')) {
-                $task->execute();
-            }
-            \core\task\manager::adhoc_task_complete($task);
-        }
     }
 }

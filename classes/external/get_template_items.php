@@ -76,7 +76,7 @@ class get_template_items extends external_api {
         // they would not have been allowed to add to anyway.
         access::require_can_copy_into($course, $sectionnum);
 
-        $sectiontemplate = section_template::for_section($template);
+        $sectiontemplate = section_template::for_section($template, access::can_review($course));
         if (!$sectiontemplate) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }

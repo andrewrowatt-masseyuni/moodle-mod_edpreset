@@ -20,15 +20,16 @@ use cm_info;
 use core_courseformat\sectiondelegate;
 use mod_edpreset\meta;
 use mod_edpreset\preset;
-use mod_edpreset\task\bake_preset;
 use mod_edpreset\task\rebuild_presets;
-use mod_edpreset\task\validate_preset;
 use section_info;
 use stdClass;
-use Throwable;
 
 /**
  * Keeps the preset records in step with the exemplar activities in the template course.
+ *
+ * Only the records: nothing is backed up here. A copy takes its own backup of the exemplar when a
+ * teacher asks for it (see activity_copier), so a rescan only has to describe what is there, and is
+ * cheap enough to run inside the request that asks for it.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -36,18 +37,17 @@ use Throwable;
  */
 class baker {
     /**
-     * Rescan the template course: add, update and remove presets, and queue any needed bakes.
+     * Rescan the template course: add, update and remove presets.
      *
-     * @return array{scanned: int, queued: int, removed: int}
+     * @return array{scanned: int, removed: int}
      */
     public static function rebuild(): array {
         $course = template::get();
         if (!$course) {
-            return ['scanned' => 0, 'queued' => 0, 'removed' => 0];
+            return ['scanned' => 0, 'removed' => 0];
         }
 
         $seen = [];
-        $queued = 0;
         $sortorder = 0;
 
         $modinfo = get_fast_modinfo($course);
@@ -68,17 +68,12 @@ class baker {
                 $sortorder = ($sectioninfo->section * 1000) + $index;
                 $preset = self::upsert($course, $cm, $sectiondata, $sortorder);
                 $seen[] = (int)$preset->get('id');
-
-                if (self::needs_baking($preset)) {
-                    self::queue_bake((int)$cm->id);
-                    $queued++;
-                }
             }
         }
 
         $removed = self::remove_presets_except($course, $seen);
 
-        return ['scanned' => count($seen), 'queued' => $queued, 'removed' => $removed];
+        return ['scanned' => count($seen), 'removed' => $removed];
     }
 
     /**
@@ -135,7 +130,7 @@ class baker {
         if (sectiondelegate::has_delegate_class('mod_' . $modname)) {
             return false;
         }
-        // Without backup support there is no way to copy it at all.
+        // A copy is a backup and a restore, so without backup support there is no way to copy it.
         return (bool)plugin_supports('mod', $modname, FEATURE_BACKUP_MOODLE2, true);
     }
 
@@ -251,13 +246,13 @@ class baker {
         $preset->set('archetype', (int)plugin_supports('mod', $cm->modname, FEATURE_MOD_ARCHETYPE, MOD_ARCHETYPE_OTHER));
         $preset->set('purpose', (string)plugin_supports('mod', $cm->modname, FEATURE_MOD_PURPOSE, MOD_PURPOSE_OTHER));
         $preset->set('branded', (bool)component_callback('mod_' . $cm->modname, 'is_branded', [], false));
-        $preset->set('exemplartimemodified', self::exemplar_timemodified($cm));
+        $preset->set('status', $details->get('status'));
+        $preset->set('showinchooser', $details->get('showinchooser'));
         $preset->set('help', self::build_help($preset));
 
         if ($preset->get('id')) {
             $preset->update();
         } else {
-            $preset->set('status', preset::STATUS_PENDING);
             $preset->create();
         }
 
@@ -267,9 +262,9 @@ class baker {
     /**
      * Turn what the curator typed into the cleaned HTML shown to teachers.
      *
-     * Cleaned here, at bake time, rather than at display time: this is the point at which the text
-     * crosses out of the template course and becomes readable by everyone who can add an activity,
-     * and both the chooser and the preset page render it unescaped.
+     * Cleaned here, when the preset is scanned, rather than at display time: this is the point at
+     * which the text crosses out of the template course and becomes readable by everyone who can add
+     * an activity, and both the chooser and the preset page render it unescaped.
      *
      * The format comes off the row rather than being assumed. It is FORMAT_HTML for anything typed
      * in the rich text editor, but a site running the plain textarea editor is still offered the
@@ -311,37 +306,6 @@ class baker {
     }
 
     /**
-     * A best-effort "when did this exemplar last change" stamp.
-     *
-     * @param cm_info $cm The exemplar.
-     * @return int
-     */
-    protected static function exemplar_timemodified(cm_info $cm): int {
-        global $DB;
-
-        $columns = $DB->get_columns($cm->modname);
-        $instancetime = 0;
-        if (array_key_exists('timemodified', $columns)) {
-            $instancetime = (int)$DB->get_field($cm->modname, 'timemodified', ['id' => $cm->instance]);
-        }
-
-        return max((int)$cm->added, $instancetime);
-    }
-
-    /**
-     * Whether a preset still needs an archive produced for it.
-     *
-     * @param preset $preset The preset.
-     * @return bool
-     */
-    protected static function needs_baking(preset $preset): bool {
-        // A preset with no usable archive always needs one. A live preset is re-baked too, because
-        // changes that matter - a rubric, an uploaded file, a quiz question - do not reliably bump
-        // any timestamp we could compare against.
-        return true;
-    }
-
-    /**
      * Delete presets whose exemplar is no longer in the template course.
      *
      * @param stdClass $course The template course.
@@ -370,13 +334,6 @@ class baker {
 
         $presetid = (int)$preset->get('id');
 
-        foreach (
-            [preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
-                  preset::FILEAREA_UNSCRUBBED] as $filearea
-        ) {
-            backup_baker::clear_area($preset, $filearea);
-        }
-
         // Favourites and recommendations point at this preset id. \core_favourites has no bulk
         // delete for an arbitrary item, so this is done directly. The contextid is deliberately
         // not part of the criteria: the preset chooser page's stars live in each user's own
@@ -400,112 +357,9 @@ class baker {
     }
 
     /**
-     * Produce the archive for one exemplar and hand it to validation.
-     *
-     * @param int $cmid The exemplar's course module id.
-     * @return bool True if an archive was staged.
-     */
-    public static function bake_one(int $cmid): bool {
-        $preset = preset::get_record(['templatecmid' => $cmid]);
-        if (!$preset) {
-            return false;
-        }
-
-        $preset->set('status', preset::STATUS_BAKING);
-        $preset->set('statusdetail', '');
-        $preset->update();
-
-        try {
-            backup_baker::bake($preset);
-        } catch (Throwable $e) {
-            $preset->set('status', preset::STATUS_FAILED);
-            $preset->set('statusdetail', get_class($e) . ': ' . $e->getMessage());
-            $preset->update();
-            return false;
-        }
-
-        $preset->set('status', preset::STATUS_VALIDATING);
-        $preset->update();
-
-        self::queue_validate((int)$preset->get('id'));
-
-        return true;
-    }
-
-    /**
-     * Mark a preset as awaiting a fresh archive and queue the work.
-     *
-     * The live archive is deliberately left alone, so the preset keeps working in the chooser until
-     * its replacement has been proven.
-     *
-     * @param int $cmid The exemplar's course module id.
-     */
-    public static function mark_stale(int $cmid): void {
-        $preset = preset::get_record(['templatecmid' => $cmid]);
-        if ($preset) {
-            $preset->set('status', preset::STATUS_PENDING);
-            $preset->update();
-        }
-        self::queue_bake($cmid);
-    }
-
-    /**
-     * Queue a bake for one exemplar.
-     *
-     * @param int $cmid The exemplar's course module id.
-     */
-    public static function queue_bake(int $cmid): void {
-        $task = new bake_preset();
-        $task->set_custom_data(['cmid' => $cmid]);
-        // De-duplicates, so saving an exemplar ten times in a row queues one bake.
-        \core\task\manager::queue_adhoc_task($task, true);
-    }
-
-    /**
-     * Queue a validation for one preset.
-     *
-     * @param int $presetid The preset id.
-     */
-    public static function queue_validate(int $presetid): void {
-        $task = new validate_preset();
-        $task->set_custom_data(['presetid' => $presetid]);
-        \core\task\manager::queue_adhoc_task($task, true);
-    }
-
-    /**
      * Queue a full rescan of the template course.
      */
     public static function queue_rebuild(): void {
         \core\task\manager::queue_adhoc_task(new rebuild_presets(), true);
-    }
-
-    /**
-     * Throw away every stored archive and rebuild from scratch.
-     *
-     * Presets leave the chooser immediately and return one at a time, each as its own replacement
-     * archive is baked and proven.
-     *
-     * @return int How many presets were reset.
-     */
-    public static function clear_cache(): int {
-        $count = 0;
-        foreach (preset::get_records() as $preset) {
-            foreach (
-                [preset::FILEAREA_BACKUP, preset::FILEAREA_STAGING,
-                      preset::FILEAREA_UNSCRUBBED] as $filearea
-            ) {
-                backup_baker::clear_area($preset, $filearea);
-            }
-            $preset->set('backupcontenthash', null);
-            $preset->set('backupfilesize', 0);
-            $preset->set('status', preset::STATUS_PENDING);
-            $preset->set('statusdetail', '');
-            $preset->update();
-            $count++;
-        }
-
-        self::queue_rebuild();
-
-        return $count;
     }
 }

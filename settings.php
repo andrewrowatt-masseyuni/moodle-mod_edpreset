@@ -57,14 +57,6 @@ if ($ADMIN->fulltree) {
         PARAM_INT
     ));
 
-    $settings->add(new admin_setting_configtext(
-        'mod_edpreset/maxbackupsize',
-        get_string('settings:maxbackupsize', 'mod_edpreset'),
-        get_string('settings:maxbackupsize_desc', 'mod_edpreset'),
-        104857600,
-        PARAM_INT
-    ));
-
     $settings->add(new admin_setting_configtextarea(
         'mod_edpreset/datefields',
         get_string('settings:datefields', 'mod_edpreset'),
@@ -95,25 +87,4 @@ if ($ADMIN->fulltree) {
 
     // It only qualifies the lock, so it means nothing with the lock switched off.
     $settings->hide_if('mod_edpreset/ignoreinvalidtemplate', 'mod_edpreset/preventmixing', 'notchecked');
-
-    $settings->add(new admin_setting_heading(
-        'mod_edpreset/sandboxheading',
-        get_string('settings:sandboxheading', 'mod_edpreset'),
-        get_string('settings:sandboxheading_desc', 'mod_edpreset')
-    ));
-
-    $settings->add(new admin_setting_configtext(
-        'mod_edpreset/sandboxshortname',
-        get_string('settings:sandboxshortname', 'mod_edpreset'),
-        get_string('settings:sandboxshortname_desc', 'mod_edpreset'),
-        \mod_edpreset\local\sandbox::DEFAULT_SHORTNAME,
-        PARAM_TEXT
-    ));
-
-    $settings->add(new admin_settings_coursecat_select(
-        'mod_edpreset/sandboxcategoryid',
-        get_string('settings:sandboxcategoryid', 'mod_edpreset'),
-        get_string('settings:sandboxcategoryid_desc', 'mod_edpreset'),
-        0
-    ));
 }

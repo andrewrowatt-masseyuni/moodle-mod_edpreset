@@ -54,12 +54,14 @@ class chooser {
     /**
      * The presets offered in a given course.
      *
-     * Only the priority section's presets go here, plus one placeholder leading to the rest. The
-     * standard chooser renders every item it is given at once, so it stops being usable as soon as
-     * the template course grows.
+     * Only the presets the curator has marked "Show in activity chooser" go here, plus one
+     * placeholder leading to the rest. The standard chooser renders every item it is given at once,
+     * so it stops being usable as soon as it is handed every preset.
      *
      * Access is already gated upstream: content_item_service requires moodle/course:manageactivities
      * and applies course_allowed_module() (i.e. mod/edpreset:addinstance) to everything we return.
+     * Which presets are offered past that is the release status, and whether this user may review
+     * presets in this course.
      *
      * @param stdClass $course The course whose chooser is being built.
      * @param stdClass $user The user the chooser is being built for.
@@ -71,13 +73,13 @@ class chooser {
         }
 
         $items = [];
-        foreach (self::get_live_presets() as $preset) {
+        foreach (self::get_offered_presets(access::can_review($course, $user)) as $preset) {
             // A section template is offered as a set or not at all, so its members never appear
-            // here - not even the ones that happen to sit in the priority section.
+            // here - not even one whose curator has marked it for the activity chooser.
             if ($preset->is_template_member()) {
                 continue;
             }
-            if ((int)$preset->get('sectionnum') !== template::priority_section()) {
+            if (!$preset->get('showinchooser')) {
                 continue;
             }
             $items[] = self::make_content_item($preset, $course);
@@ -135,14 +137,11 @@ class chooser {
     /**
      * The presets reached through the preset chooser page including those on the standard chooser.
      *
+     * @param bool $canreview Whether the user may review presets in the target course.
      * @return preset[]
      */
-    public static function get_page_presets(): array {
-        $presets = [];
-        foreach (self::get_live_presets() as $preset) {
-            $presets[] = $preset;
-        }
-        return $presets;
+    public static function get_page_presets(bool $canreview): array {
+        return self::get_offered_presets($canreview);
     }
 
     /**
@@ -178,7 +177,8 @@ class chooser {
     /**
      * Every preset, without course context.
      *
-     * Deliberately a superset of get_content_items(), which offers only the priority section.
+     * Deliberately a superset of get_content_items(), which offers only the presets marked to show
+     * in the activity chooser.
      * content_item_service::add_to_user_favourites() looks a starred id up with array_search()
      * against this list and, when that fails, indexes $items[0] instead - so anything that can
      * carry a star in the standard chooser must appear here. Narrowing this to match
@@ -188,6 +188,9 @@ class chooser {
      * The placeholder is not included: it renders without a star (see PLACEHOLDER_ID), so nothing
      * can ever ask to favourite it.
      *
+     * Presets ready for review are included for the same reason: whoever may review them can star
+     * them in the standard chooser, and there is no user here to ask.
+     *
      * @return content_item[]
      */
     public static function get_all_content_items(): array {
@@ -196,7 +199,7 @@ class chooser {
         }
 
         $items = [];
-        foreach (self::get_live_presets() as $preset) {
+        foreach (self::get_offered_presets(true) as $preset) {
             // Kept out for the same reason as get_content_items(): a member is never offered on its
             // own, so it can never carry a star, and it must not be recommendable by itself either.
             // Excluding it from both lists together preserves the superset relationship this list
@@ -210,15 +213,12 @@ class chooser {
     }
 
     /**
-     * The presets that have a validated backup behind them.
+     * The presets the curator has made available to this user, capped by the maxpresets setting.
      *
-     * Chooser visibility is decided by the live archive rather than by the status field, so a
-     * preset can never be offered without a proven backup, and a re-bake in flight does not pull
-     * a working preset out of the chooser.
-     *
+     * @param bool $canreview Whether to include the presets ready for review.
      * @return preset[]
      */
-    protected static function get_live_presets(): array {
+    protected static function get_offered_presets(bool $canreview): array {
         $max = (int)get_config('mod_edpreset', 'maxpresets') ?: self::DEFAULT_MAX_PRESETS;
 
         $candidates = preset::get_records(
@@ -227,12 +227,12 @@ class chooser {
             'ASC'
         );
 
-        $live = [];
+        $offered = [];
         $cards = 0;
         $templates = [];
 
         foreach ($candidates as $preset) {
-            if (!$preset->is_live()) {
+            if (!$preset->is_offered($canreview)) {
                 continue;
             }
 
@@ -249,18 +249,18 @@ class chooser {
                     $templates[$sectionnum] = true;
                     $cards++;
                 }
-                $live[] = $preset;
+                $offered[] = $preset;
                 continue;
             }
 
             if ($cards >= $max) {
                 continue;
             }
-            $live[] = $preset;
+            $offered[] = $preset;
             $cards++;
         }
 
-        return $live;
+        return $offered;
     }
 
     /**
@@ -274,7 +274,7 @@ class chooser {
         return new content_item(
             (int)$preset->get('id'),
             self::item_name($preset),
-            new string_title($preset->get('title')),
+            new string_title(self::item_title($preset)),
             self::item_link($preset, $course),
             self::item_icon($preset),
             (string)$preset->get('help'),
@@ -283,6 +283,23 @@ class chooser {
             $preset->get('purpose'),
             (bool)$preset->get('branded')
         );
+    }
+
+    /**
+     * The item's title.
+     *
+     * A preset ready for review says so, because the standard chooser has nowhere else to show it
+     * and the people who see one are the people who need to tell it apart from a released one.
+     *
+     * @param preset $preset The preset.
+     * @return string
+     */
+    protected static function item_title(preset $preset): string {
+        $title = (string)$preset->get('title');
+
+        return $preset->is_in_review()
+            ? get_string('chooser:reviewtitle', 'mod_edpreset', $title)
+            : $title;
     }
 
     /**

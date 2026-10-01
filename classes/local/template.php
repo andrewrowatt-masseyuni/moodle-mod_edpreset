@@ -208,17 +208,4 @@ class template {
     public static function first_scanned_section(): int {
         return 1;
     }
-
-    /**
-     * The section whose presets go into the standard activity chooser.
-     *
-     * Everything above it is reached through the preset chooser page instead. The split exists
-     * because the standard chooser shows every item at once, so it stops being usable once the
-     * template course grows past a handful of exemplars.
-     *
-     * @return int
-     */
-    public static function priority_section(): int {
-        return 1;
-    }
 }

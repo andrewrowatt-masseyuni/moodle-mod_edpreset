@@ -49,16 +49,6 @@ $observers = [
         'internal' => false,
     ],
     [
-        'eventname' => '\core\event\grading_definition_created',
-        'callback' => '\mod_edpreset\observer::grading_definition_changed',
-        'internal' => false,
-    ],
-    [
-        'eventname' => '\core\event\grading_definition_updated',
-        'callback' => '\mod_edpreset\observer::grading_definition_changed',
-        'internal' => false,
-    ],
-    [
         'eventname' => '\core\event\course_deleted',
         'callback' => '\mod_edpreset\observer::course_deleted',
         'internal' => false,

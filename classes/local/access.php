@@ -24,8 +24,8 @@ use stdClass;
  * The checks that must pass before a preset may be copied into a course.
  *
  * Copying has one entry point, copy.php, reached both from the standard activity chooser and from
- * the preset chooser page's batch add. The rules live here rather than in it so that the validator
- * and the tests can apply the same ones.
+ * the preset chooser page's batch add. The rules live here rather than in it so that the chooser
+ * page, the web services and the tests can apply the same ones.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -104,6 +104,20 @@ class access {
             // Includes required_capability_exception, which extends moodle_exception.
             return false;
         }
+    }
+
+    /**
+     * Whether the current user may see and add presets that are ready for review, in a course.
+     *
+     * Asked in the target course's context rather than at system level, so the capability can be
+     * granted either through a site-wide role or through a role in particular courses.
+     *
+     * @param stdClass $course The target course.
+     * @param stdClass|int|null $user The user, or null for the current user.
+     * @return bool
+     */
+    public static function can_review(stdClass $course, $user = null): bool {
+        return has_capability('mod/edpreset:reviewpresets', context_course::instance($course->id), $user);
     }
 
     /**

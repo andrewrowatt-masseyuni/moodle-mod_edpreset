@@ -138,7 +138,7 @@
 
 .edpreset-chooser .edpreset-cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(25rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr));
     gap: 1rem;
 }
 
@@ -481,6 +481,15 @@
     background-color: rgba(11, 122, 91, 0.12);  /* soft green tint */
     border-color: transparent;
     color: #0b7a5b;                              /* green text/foreground */
+    cursor: default;
+}
+
+/* Shown only to reviewers, on a preset or template the curator has marked ready for review. */
+.edpreset-chooser .edpreset-review {
+    flex-shrink: 0;
+    background-color: rgba(176, 106, 0, 0.12);   /* soft amber tint */
+    border-color: transparent;
+    color: #8a5300;                              /* amber text/foreground */
     cursor: default;
 }
 

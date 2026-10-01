@@ -109,6 +109,27 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * The reorder dialogue lists only the template members the user would be given.
+     */
+    public function test_get_template_items_lists_only_offered_members(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $member = ['templatecourseid' => $templatecourse->id, 'sectionnum' => 3, 'templatename' => 'Weekly cycle'];
+        $released = $plugingenerator->create_preset($member);
+        $plugingenerator->create_preset($member + ['status' => meta::STATUS_DRAFT]);
+        $plugingenerator->create_preset($member + ['status' => meta::STATUS_REVIEW]);
+
+        $course = $generator->create_course(['numsections' => 2]);
+        $this->setUser($generator->create_and_enrol($course, 'editingteacher'));
+
+        $result = get_template_items::execute((int)$course->id, 1, 3);
+        $this->assertSame(['p' . $released->get('id')], array_column($result['templateitems'], 'token'));
+    }
+
+    /**
      * The reorder dialogue lists a restricted template's activities only where the chooser shows it.
      */
     public function test_get_template_items_respects_a_restricted_template(): void {

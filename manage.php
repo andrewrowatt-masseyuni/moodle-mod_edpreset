@@ -27,7 +27,6 @@ require_once($CFG->libdir . '/adminlib.php');
 
 use mod_edpreset\local\baker;
 use mod_edpreset\output\manage_page;
-use mod_edpreset\preset;
 
 admin_externalpage_setup('modsettingedpresetmanage');
 
@@ -37,27 +36,12 @@ $manageurl = new moodle_url('/mod/edpreset/manage.php');
 if ($action !== '') {
     require_sesskey();
 
-    // Every action only queues work. Backups and test restores can each take seconds, so none of
-    // them is run inside the request.
     switch ($action) {
         case 'rebuild':
-            baker::queue_rebuild();
-            redirect($manageurl, get_string('manage:rebuildqueued', 'mod_edpreset'));
-            break;
-
-        case 'clearcache':
-            $count = baker::clear_cache();
-            redirect($manageurl, get_string('manage:cachecleared', 'mod_edpreset', $count));
-            break;
-
-        case 'rebake':
-            $presetid = required_param('preset', PARAM_INT);
-            $preset = preset::get_record(['id' => $presetid]);
-            if (!$preset) {
-                throw new moodle_exception('invalidpreset', 'mod_edpreset');
-            }
-            baker::mark_stale((int)$preset->get('templatecmid'));
-            redirect($manageurl, get_string('manage:rebakequeued', 'mod_edpreset', $preset->get('title')));
+            // Run here rather than queued: with nothing to back up, a rescan only rewrites the preset
+            // records, which is quick, and an administrator who presses it wants to see the result.
+            $result = baker::rebuild();
+            redirect($manageurl, get_string('manage:rebuilt', 'mod_edpreset', (object)$result));
             break;
 
         default:

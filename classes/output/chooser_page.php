@@ -98,7 +98,7 @@ class chooser_page implements renderable, templatable {
      * @return stdClass
      */
     public function export_for_template(renderer_base $output): stdClass {
-        $presets = chooser::get_page_presets();
+        $presets = chooser::get_page_presets(access::can_review($this->course));
         $collapsed = self::get_collapsed_keys();
 
         // Once a course has used one template it keeps to it, so every other template is shown but
@@ -309,8 +309,9 @@ class chooser_page implements renderable, templatable {
         // Mustache cannot choose a partial dynamically, so the template branches on this.
         $group->istemplategroup = $istemplategroup;
         $group->cards = $cards;
-        // Already cleaned at bake time, so the template renders it unescaped - the same contract as
-        // a preset description. html_is_blank() so an emptied editor's "<p></p>" shows nothing.
+        // Already cleaned when the preset was scanned, so the template renders it unescaped - the
+        // same contract as a preset description. html_is_blank() so an emptied editor's "<p></p>"
+        // shows nothing.
         $group->summary = $summary;
         $group->hassummary = !html_is_blank($summary);
         $group->count = count($cards);
@@ -339,8 +340,8 @@ class chooser_page implements renderable, templatable {
         $card = new stdClass();
         $card->templatesection = $template->get_sectionnum();
         $card->title = $template->get_name();
-        // Already cleaned at bake time, so the template renders it unescaped - same contract as a
-        // preset description.
+        // Already cleaned when the preset was scanned, so the template renders it unescaped - same
+        // contract as a preset description.
         $card->description = $summary;
         // The first member's icon, with the classes that colour it: the icon container needs the
         // module, purpose and branded flag or the icon comes out grey.
@@ -364,6 +365,9 @@ class chooser_page implements renderable, templatable {
             && $usedtemplate === $template->get_name();
         $card->count = $template->count_members();
         $card->addurl = $this->template_add_url($template->get_sectionnum())->out(false);
+        // Only ever true for someone who can review presets, since nobody else is offered a member
+        // that is in review.
+        $card->inreview = $template->has_members_in_review();
         $this->export_card_tags($card, $tags, $sections);
 
         // The same flattening the preset cards get, so one filter pass covers both kinds of card.
@@ -442,6 +446,7 @@ class chooser_page implements renderable, templatable {
         $card->purpose = $preset->get('purpose');
         $card->branded = (bool)$preset->get('branded');
         $card->favourited = in_array($presetid, $favourites, true);
+        $card->inreview = $preset->is_in_review();
         $card->addurl = $this->add_url($presetid)->out(false);
         $this->export_card_tags($card, $tags, $sections);
 

@@ -17,12 +17,11 @@
 namespace mod_edpreset;
 
 use mod_edpreset\local\activity_copier;
-use mod_edpreset\local\backup_baker;
 use mod_edpreset\local\scrub\clear_dates;
-use mod_edpreset\local\validator;
+use mod_edpreset\local\scrubber;
 
 /**
- * Tests for the archive scrubber and its date-clearing rule.
+ * Tests for the scrubber and its date-clearing rule, which tidy a copy once it has been restored.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -32,23 +31,13 @@ use mod_edpreset\local\validator;
  */
 final class scrubber_test extends \advanced_testcase {
     /**
-     * Load the backup and restore APIs.
-     */
-    public static function setUpBeforeClass(): void {
-        global $CFG;
-        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
-        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-        parent::setUpBeforeClass();
-    }
-
-    /**
-     * Bake an exemplar and publish it through the real validate-then-promote path.
+     * Create an exemplar and a released preset for it.
      *
      * @param string $modname The module to use.
      * @param array $moddata Module settings, typically the dates under test.
      * @return preset
      */
-    protected function publish(string $modname, array $moddata = []): preset {
+    protected function exemplar(string $modname, array $moddata = []): preset {
         $generator = $this->getDataGenerator();
 
         // Some module generators (lesson, workshop) refuse to run without a real logged-in user.
@@ -65,28 +54,21 @@ final class scrubber_test extends \advanced_testcase {
         set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
         set_config('enabled', 1, 'mod_edpreset');
 
-        $preset = $generator->get_plugin_generator('mod_edpreset')->create_preset([
+        return $generator->get_plugin_generator('mod_edpreset')->create_preset([
             'templatecourseid' => $templatecourse->id,
             'templatecmid' => $exemplarcm->id,
             'modname' => $modname,
             'instanceid' => $module->id,
             'contextid' => \context_module::instance($exemplarcm->id)->id,
             'title' => 'Exemplar ' . $modname,
-            'live' => false,
         ]);
-
-        $this->setAdminUser();
-        backup_baker::bake($preset);
-        $this->assertTrue(validator::process($preset), 'the exemplar failed to publish');
-
-        return preset::get_record(['id' => $preset->get('id')]);
     }
 
     /**
-     * Copy a published preset into a fresh course and return its instance record.
+     * Copy a preset into a fresh course and return the copy's instance record.
      *
      * @param preset $preset The preset.
-     * @return \stdClass The restored instance record.
+     * @return \stdClass The copy's instance record.
      */
     protected function copy_and_read(preset $preset): \stdClass {
         global $DB;
@@ -107,7 +89,7 @@ final class scrubber_test extends \advanced_testcase {
     public function test_dates_are_cleared(string $modname, array $dates): void {
         $this->resetAfterTest();
 
-        $preset = $this->publish($modname, $dates);
+        $preset = $this->exemplar($modname, $dates);
         $instance = $this->copy_and_read($preset);
 
         foreach (array_keys($dates) as $field) {
@@ -153,13 +135,12 @@ final class scrubber_test extends \advanced_testcase {
      *
      * This is the failure the curated map exists to prevent. A column-name heuristic over these
      * modules would have zeroed assign's sendnotifications and quiz's timelimit, silently changing
-     * what the exemplar does - and validation could not catch it, because the archive still
-     * restores perfectly.
+     * what the copy does - and nothing would notice, because the activity still works.
      */
     public function test_non_date_settings_are_not_touched(): void {
         $this->resetAfterTest();
 
-        $preset = $this->publish('assign', [
+        $preset = $this->exemplar('assign', [
             'duedate' => 1600000000,
             'sendnotifications' => 1,
             'sendlatenotifications' => 1,
@@ -174,28 +155,64 @@ final class scrubber_test extends \advanced_testcase {
     }
 
     /**
-     * Bookkeeping timestamps must survive: the restore relies on them.
+     * Bookkeeping timestamps are not dates to clear.
      */
     public function test_timecreated_and_timemodified_survive(): void {
         $this->resetAfterTest();
 
-        $preset = $this->publish('quiz', ['timeopen' => 1600000000]);
+        $preset = $this->exemplar('quiz', ['timeopen' => 1600000000]);
         $instance = $this->copy_and_read($preset);
 
         $this->assertGreaterThan(0, (int)$instance->timemodified);
     }
 
     /**
-     * What was cleared is recorded against the preset, so a curator can see it.
+     * The exemplar keeps its dates: only the copy is touched.
      */
-    public function test_cleared_fields_are_recorded(): void {
+    public function test_the_exemplar_keeps_its_dates(): void {
+        global $DB;
         $this->resetAfterTest();
 
-        $preset = $this->publish('assign', ['duedate' => 1600000000]);
+        $preset = $this->exemplar('assign', ['duedate' => 1600000000]);
+        $this->copy_and_read($preset);
 
-        $this->assertSame(1, (int)$preset->get('scrubbed'));
-        $this->assertStringContainsString('clear_dates', $preset->get('datescleared'));
-        $this->assertStringContainsString('duedate', $preset->get('datescleared'));
+        $this->assertSame(1600000000, (int)$DB->get_field('assign', 'duedate', ['id' => $preset->get('instanceid')]));
+    }
+
+    /**
+     * The copy's calendar is built from its cleared dates, not the exemplar's.
+     *
+     * The dates are cleared before the copier refreshes the copy's calendar events, so a due date
+     * the copy no longer has must not appear on the teacher's calendar.
+     */
+    public function test_calendar_events_follow_the_cleared_dates(): void {
+        global $DB;
+        $this->resetAfterTest();
+
+        $preset = $this->exemplar('assign', ['duedate' => time() + WEEKSECS]);
+        $this->assertTrue(
+            $DB->record_exists('event', ['modulename' => 'assign', 'instance' => $preset->get('instanceid'), 'eventtype' => 'due']),
+            'sanity: the exemplar has a due date event'
+        );
+
+        $instance = $this->copy_and_read($preset);
+
+        $this->assertFalse(
+            $DB->record_exists('event', ['modulename' => 'assign', 'instance' => $instance->id, 'eventtype' => 'due'])
+        );
+    }
+
+    /**
+     * The scrubber reports what each rule changed.
+     */
+    public function test_scrub_reports_what_it_cleared(): void {
+        $this->resetAfterTest();
+
+        $preset = $this->exemplar('assign', ['duedate' => 1600000000, 'cutoffdate' => 0]);
+
+        $changes = scrubber::scrub('assign', (int)$preset->get('instanceid'));
+
+        $this->assertSame(['clear_dates' => ['duedate']], $changes);
     }
 
     /**
@@ -224,95 +241,30 @@ final class scrubber_test extends \advanced_testcase {
     }
 
     /**
-     * The published archive still restores after scrubbing - the assertion that actually matters.
-     *
-     * Clearing a field the restore needs would be far worse than leaving a stale date behind, so
-     * every module in the map is round-tripped.
-     *
-     * @param string $modname The module.
-     * @param array $dates Dates to set on the exemplar.
-     * @dataProvider dates_provider
+     * An admin's field that is not a column of the module is skipped, not written.
      */
-    public function test_scrubbed_archive_still_restores(string $modname, array $dates): void {
+    public function test_a_configured_field_that_does_not_exist_is_skipped(): void {
         $this->resetAfterTest();
+        set_config('datefields', 'assign: nosuchcolumn', 'mod_edpreset');
 
-        $preset = $this->publish($modname, $dates);
+        $preset = $this->exemplar('assign', ['duedate' => 1600000000]);
+        $instance = $this->copy_and_read($preset);
 
-        // Publishing already proved it through the sandbox; prove it again into a real course.
-        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
-        $cm = activity_copier::copy($preset, $course, 1);
-
-        $this->assertSame($modname, $cm->modname);
-        $this->assertSame(1, (int)$preset->get('scrubbed'));
+        $this->assertSame(0, (int)$instance->duedate, 'the mapped fields should still be cleared');
     }
 
     /**
-     * If a scrub rule breaks the restore, the untouched backup is published instead.
+     * A rule that throws is reported and skipped; it does not fail whatever asked for the scrub.
      *
-     * This is what makes best-effort scrubbing safe: an over-aggressive rule degrades to "dates
-     * not cleared" rather than "preset unavailable", automatically and per module.
+     * A copy that is sitting in the teacher's course and reported as failed would be worse than a
+     * copy with a stale date.
      */
-    public function test_a_rule_that_breaks_the_restore_falls_back_to_the_original(): void {
+    public function test_a_rule_that_throws_is_skipped(): void {
         $this->resetAfterTest();
-        $generator = $this->getDataGenerator();
+        // A module with no table: the rule applies, then cannot read the instance.
+        set_config('datefields', 'nosuchmodule: somedate', 'mod_edpreset');
 
-        $templatecourse = $generator->create_course(['numsections' => 2]);
-        $module = $generator->create_module('assign', [
-            'course' => $templatecourse->id,
-            'section' => 1,
-            'name' => 'Exemplar assign',
-            'duedate' => 1600000000,
-        ]);
-        $exemplarcm = get_coursemodule_from_instance('assign', $module->id, $templatecourse->id);
-
-        set_config('templatecourseid', $templatecourse->id, 'mod_edpreset');
-        set_config('enabled', 1, 'mod_edpreset');
-
-        $preset = $generator->get_plugin_generator('mod_edpreset')->create_preset([
-            'templatecourseid' => $templatecourse->id,
-            'templatecmid' => $exemplarcm->id,
-            'modname' => 'assign',
-            'instanceid' => $module->id,
-            'contextid' => \context_module::instance($exemplarcm->id)->id,
-            'live' => false,
-        ]);
-
-        $this->setAdminUser();
-        backup_baker::bake($preset);
-
-        // Corrupt the staged archive so it cannot restore, while leaving the untouched copy that
-        // bake() kept alongside it intact. This is the shape of an over-aggressive scrub rule.
-        get_file_storage()->delete_area_files(
-            \context_system::instance()->id,
-            'mod_edpreset',
-            preset::FILEAREA_STAGING,
-            $preset->get('id')
-        );
-        get_file_storage()->create_file_from_string([
-            'contextid' => \context_system::instance()->id,
-            'component' => 'mod_edpreset',
-            'filearea' => preset::FILEAREA_STAGING,
-            'itemid' => $preset->get('id'),
-            'filepath' => '/',
-            'filename' => 'preset_' . $preset->get('id') . '.mbz',
-        ], 'a scrub rule mangled this archive beyond repair');
-        $preset->set('scrubbed', 1);
-        $preset->update();
-
-        $this->assertTrue(validator::process($preset), 'the fallback should still publish');
+        $this->assertSame([], scrubber::scrub('nosuchmodule', 1));
         $this->assertDebuggingCalled();
-
-        $preset = preset::get_record(['id' => $preset->get('id')]);
-        $this->assertSame(preset::STATUS_READY, $preset->get('status'));
-        $this->assertTrue($preset->is_live());
-        $this->assertSame(0, (int)$preset->get('scrubbed'), 'the unscrubbed archive should be live');
-        $this->assertSame(
-            get_string('scrubbrokerestore', 'mod_edpreset'),
-            $preset->get('datescleared')
-        );
-
-        // And the published preset genuinely works - with the exemplar's date still on it.
-        $instance = $this->copy_and_read($preset);
-        $this->assertSame(1600000000, (int)$instance->duedate);
     }
 }

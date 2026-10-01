@@ -16,6 +16,7 @@
 
 namespace mod_edpreset;
 
+use mod_edpreset\local\activity_copier;
 use mod_edpreset\local\baker;
 use mod_edpreset\local\template;
 
@@ -29,16 +30,6 @@ use mod_edpreset\local\template;
  * @covers     \mod_edpreset\observer
  */
 final class baker_test extends \advanced_testcase {
-    /**
-     * Load the backup and restore APIs.
-     */
-    public static function setUpBeforeClass(): void {
-        global $CFG;
-        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
-        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-        parent::setUpBeforeClass();
-    }
-
     /**
      * A template course with named sections and a spread of activities.
      *
@@ -288,13 +279,13 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
-     * The description is cleaned at bake time, not at display time.
+     * The description is cleaned when the preset is scanned, not at display time.
      *
      * This is the whole reason the rendering happens here rather than in the chooser: the field is
      * PARAM_RAW on the settings form, and every card and info panel emits it unescaped. If cleaning
      * ever moved or was dropped, a curator's script tag would reach every teacher on the site.
      */
-    public function test_description_is_cleaned_at_bake_time(): void {
+    public function test_description_is_cleaned_when_scanned(): void {
         $this->resetAfterTest();
         $course = $this->make_template_course();
 
@@ -440,17 +431,54 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
-     * Scanning queues one bake per exemplar rather than baking inline.
+     * The curator's release status and activity chooser choice are copied onto the preset, and a
+     * preset is scanned whatever its status.
+     *
+     * Draft and archived presets keep their records - and so their ids, and the stars that point at
+     * them - because the status alone decides who is offered them.
      */
-    public function test_rebuild_queues_bakes(): void {
+    public function test_status_is_denormalised(): void {
         $this->resetAfterTest();
         $this->make_template_course();
 
+        $statuses = [
+            'Reflective journal' => meta::STATUS_REVIEW,
+            'Discussion starter' => meta::STATUS_DRAFT,
+            'Practice quiz' => meta::STATUS_ARCHIVED,
+        ];
+        foreach ($statuses as $presetname => $status) {
+            $details = meta::get_record(['presetname' => $presetname]);
+            $details->set('status', $status);
+            // Opposite of the section-1 rule this replaced, so the test cannot pass by accident.
+            $details->set('showinchooser', $presetname === 'Practice quiz');
+            $details->update();
+        }
+
         $result = baker::rebuild();
 
-        $this->assertSame(3, $result['queued']);
-        $queued = \core\task\manager::get_adhoc_tasks(\mod_edpreset\task\bake_preset::class);
-        $this->assertCount(3, $queued);
+        $this->assertSame(3, $result['scanned']);
+        foreach ($statuses as $presetname => $status) {
+            $preset = preset::get_record(['title' => $presetname]);
+            $this->assertSame($status, $preset->get('status'));
+            $this->assertSame($presetname === 'Practice quiz', (bool)$preset->get('showinchooser'));
+        }
+    }
+
+    /**
+     * A scan is all a preset needs before it can be copied: the copy takes its own backup.
+     */
+    public function test_a_scanned_preset_can_be_copied(): void {
+        $this->resetAfterTest();
+        $this->make_template_course();
+
+        baker::rebuild();
+        $preset = preset::get_record(['title' => 'Reflective journal']);
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $cm = activity_copier::copy($preset, $course, 1);
+
+        $this->assertSame('assign', $cm->modname);
+        $this->assertSame('Reflective journal', $cm->name);
     }
 
     /**
@@ -498,7 +526,7 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
-     * Editing an exemplar queues a rescan, and leaves the live archive serving meanwhile.
+     * Editing an exemplar queues a rescan.
      */
     public function test_editing_an_exemplar_queues_work(): void {
         $this->resetAfterTest();
@@ -579,44 +607,54 @@ final class baker_test extends \advanced_testcase {
     }
 
     /**
-     * Clearing the cache pulls every preset out of the chooser and queues a rebuild.
+     * Duplicating an exemplar gives the duplicate a draft copy of the original's preset details.
+     *
+     * This is how a curator reworks a released preset without teachers picking up the half-done
+     * edit, so it must not cost them retyping the details.
      */
-    public function test_clear_cache_unpublishes_everything(): void {
+    public function test_duplicating_an_exemplar_copies_its_details_as_a_draft(): void {
         $this->resetAfterTest();
-        $this->make_template_course();
+        $course = $this->make_template_course();
         baker::rebuild();
 
-        // Publish one for real.
-        $preset = preset::get_record(['title' => 'Reflective journal']);
-        baker::bake_one((int)$preset->get('templatecmid'));
-        \mod_edpreset\local\validator::process(preset::get_record(['id' => $preset->get('id')]));
-        $this->assertTrue(preset::get_record(['id' => $preset->get('id')])->is_live());
+        $original = meta::get_record(['presetname' => 'Reflective journal']);
+        $cm = get_fast_modinfo($course)->get_cm((int)$original->get('cmid'));
 
-        $count = baker::clear_cache();
+        $duplicate = null;
+        $this->deliver_events(function () use ($course, $cm, &$duplicate): void {
+            $duplicate = duplicate_module($course, $cm);
+        });
 
-        $this->assertSame(3, $count);
-        foreach (preset::get_records() as $reloaded) {
-            $this->assertFalse($reloaded->is_live(), 'no preset should be offered after a cache clear');
-            $this->assertSame(preset::STATUS_PENDING, $reloaded->get('status'));
+        $details = meta::get_for_cm((int)$duplicate->id);
+        $this->assertNotNull($details, 'the duplicate should have preset details');
+        $this->assertSame(meta::STATUS_DRAFT, $details->get('status'));
+        foreach (['presetname', 'description', 'descriptionformat', 'tags', 'defaultname', 'recommendedsection'] as $field) {
+            $this->assertEquals($original->get($field), $details->get($field), $field);
         }
+
+        // The original is untouched, and the duplicate becomes a preset that nobody is offered.
+        $this->assertSame(meta::STATUS_RELEASED, meta::get_for_cm((int)$cm->id)->get('status'));
+        baker::rebuild();
+        $this->assertSame(meta::STATUS_DRAFT, preset::get_record(['templatecmid' => $duplicate->id])->get('status'));
     }
 
     /**
-     * A full pass - scan, bake, validate - publishes the exemplars.
+     * An activity that merely follows a preset is not mistaken for a duplicate of it.
      */
-    public function test_full_pipeline_publishes_presets(): void {
+    public function test_a_new_activity_is_not_taken_for_a_duplicate(): void {
         $this->resetAfterTest();
-        $this->make_template_course();
+        $course = $this->make_template_course();
 
-        baker::rebuild();
+        $created = null;
+        $this->deliver_events(function () use ($course, &$created): void {
+            $created = $this->getDataGenerator()->create_module('assign', [
+                'course' => $course->id,
+                'section' => 1,
+                'name' => 'Another assignment',
+            ]);
+        });
 
-        foreach (preset::get_records() as $preset) {
-            baker::bake_one((int)$preset->get('templatecmid'));
-            \mod_edpreset\local\validator::process(preset::get_record(['id' => $preset->get('id')]));
-        }
-
-        $live = array_filter(preset::get_records(), fn($p) => $p->is_live());
-        $this->assertCount(3, $live);
+        $this->assertFalse(meta::exists_for_cm((int)$created->cmid));
     }
 
     /**
@@ -627,7 +665,7 @@ final class baker_test extends \advanced_testcase {
         set_config('templatecourseid', 0, 'mod_edpreset');
 
         $this->assertSame(
-            ['scanned' => 0, 'queued' => 0, 'removed' => 0],
+            ['scanned' => 0, 'removed' => 0],
             baker::rebuild()
         );
         $this->assertFalse(template::is_configured());

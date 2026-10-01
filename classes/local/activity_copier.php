@@ -17,22 +17,29 @@
 namespace mod_edpreset\local;
 
 use backup;
+use backup_controller;
 use cm_info;
 use core\progress\base as progress_base;
 use mod_edpreset\preset;
 use moodle_exception;
 use restore_controller;
 use stdClass;
-use stored_file;
+use Throwable;
 
 /**
- * Restores a single activity archive into a course.
+ * Copies an exemplar activity into a course: a backup and a restore, one straight after the other.
  *
- * This is the cross-course equivalent of core's duplicate_module(), which cannot be reused: its
- * backup/restore core would work, but everything after the restore is hardcoded to the *source*
- * course - get_coursemodule_from_id(..., $cm->course), the course_sections lookup filtered on
- * $cm->course, and get_fast_modinfo($cm->course) - so it silently fails when the target course is
+ * This is the cross-course equivalent of core's duplicate_module(), and does what it does - an
+ * import-mode backup handed straight to an import-mode restore, with no archive in between. It
+ * cannot simply call it: everything duplicate_module() does after the restore is hardcoded to the
+ * *source* course - get_coursemodule_from_id(..., $cm->course), the course_sections lookup filtered
+ * on $cm->course, and get_fast_modinfo($cm->course) - so it silently fails when the target course is
  * a different one.
+ *
+ * Nothing is stored between copies. Each one backs up the exemplar as it is at that moment, so a
+ * teacher always gets the curator's current version, and there is no archive that could fall out
+ * of step with it. Which presets are offered at all is the curator's release status, not anything
+ * this class proves.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -40,49 +47,197 @@ use stored_file;
  */
 class activity_copier {
     /**
-     * Restore an activity archive into a course and place it.
+     * Copy a preset into a course.
      *
-     * Deliberately shared with the validation pass (see validator), so that the test restore
-     * exercises exactly the code path a teacher's click takes rather than a parallel one.
+     * Any teacher guidance comes with it and needs nothing done here: it is embedded in the
+     * exemplar's own text as local_edguidance tokens, whose blocks ride along in the activity's
+     * backup - see local/edguidance/README.md.
      *
-     * The restore runs as $userid in MODE_IMPORT, which requires moodle/restore:restoretargetimport
-     * in the target course. Editing teachers hold that by default. Note that the *backup* side has
-     * the opposite requirement - moodle/backup:backuptargetimport in the source course - which
-     * teachers do not hold for the template course, and which is why archives are baked ahead of
-     * time by an admin rather than produced on demand.
-     *
-     * @param stored_file $mbz The activity archive.
+     * @param preset $preset The preset to copy.
      * @param stdClass $course The target course.
      * @param int $sectionnum The section number to place the activity in.
      * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param progress_base|null $progress Optional progress reporter.
+     * @return cm_info The new course module.
+     * @throws moodle_exception If the exemplar has gone, or the backup or restore fails.
+     */
+    public static function copy(
+        preset $preset,
+        stdClass $course,
+        int $sectionnum,
+        int $beforemod = 0,
+        ?progress_base $progress = null
+    ): cm_info {
+        global $CFG;
+
+        // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
+        // bootstrap - so an external function reaching here has nothing loaded.
+        require_once($CFG->dirroot . '/course/lib.php');
+
+        $exemplar = $preset->get_exemplar();
+        if (!$exemplar) {
+            throw new moodle_exception('exemplarmissing', 'mod_edpreset');
+        }
+
+        $newcmid = self::copy_activity($exemplar, $course, $sectionnum, $beforemod, $progress);
+
+        // Before the modinfo read below, not after: set_coursemodule_name() purges and rebuilds
+        // the course cache, so a rename afterwards would leave the returned cm_info holding the
+        // exemplar's name - which is exactly what the caller displays.
+        $defaultname = trim((string)$preset->get('defaultname'));
+        if ($defaultname !== '') {
+            set_coursemodule_name($newcmid, $defaultname);
+        }
+
+        return get_fast_modinfo($course->id)->get_cm($newcmid);
+    }
+
+    /**
+     * Back an activity up and restore it into a course, then place it and tidy it up.
+     *
+     * The backup runs as the site administrator. An import-mode backup needs
+     * moodle/backup:backuptargetimport in the source course, and teachers do not hold that in the
+     * template course - nor should they, since it would let them import anything from it through
+     * core's own import page. Running as the administrator for this one step is what core's recycle
+     * bin does too (tool_recyclebin\course_bin::store_item() backs activities up as get_admin() from
+     * whoever deleted them). It widens nothing: the caller has already decided this exemplar is one
+     * the teacher may be offered, and an import-mode backup never carries user data - backup_check
+     * forces the users setting off and locks it.
+     *
+     * The restore runs as the requesting user, which needs moodle/restore:restoretargetimport in
+     * the target course. Editing teachers hold that by default, and access::require_can_copy_into()
+     * checks it before anything gets here.
+     *
+     * @param cm_info $source The activity to copy.
+     * @param stdClass $course The target course.
+     * @param int $sectionnum The section number to place the activity in.
+     * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param progress_base|null $progress Optional progress reporter, used by both halves.
+     * @return int The new course module id.
+     * @throws moodle_exception If the backup or the restore fails.
+     */
+    public static function copy_activity(
+        cm_info $source,
+        stdClass $course,
+        int $sectionnum,
+        int $beforemod = 0,
+        ?progress_base $progress = null
+    ): int {
+        global $CFG, $DB, $USER;
+
+        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
+        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
+
+        [$backupid, $basepath] = self::backup($source, $progress);
+        try {
+            $newcmid = self::restore($backupid, $course, (int)$USER->id, $progress);
+        } finally {
+            if (empty($CFG->keeptempdirectoriesonbackup)) {
+                fulldelete($basepath);
+            }
+        }
+
+        self::place($course, $newcmid, $sectionnum, $beforemod);
+
+        // The restored activity carries the exemplar's idnumber, availability rules and expected
+        // completion date. An idnumber must be unique within a course, availability references
+        // ids that only mean something in the template course, and a date copied from an exemplar
+        // is never the date the teacher wants.
+        $DB->set_field('course_modules', 'idnumber', '', ['id' => $newcmid]);
+        $DB->set_field('course_modules', 'availability', null, ['id' => $newcmid]);
+        $DB->set_field('course_modules', 'completionexpected', 0, ['id' => $newcmid]);
+
+        // Before the calendar is refreshed below, so the events are built from the cleared dates
+        // rather than the exemplar's.
+        $newcm = get_coursemodule_from_id('', $newcmid, $course->id, false, MUST_EXIST);
+        scrubber::scrub($newcm->modname, (int)$newcm->instance);
+
+        rebuild_course_cache($course->id, true);
+
+        $newcm = get_coursemodule_from_id('', $newcmid, $course->id, false, MUST_EXIST);
+        course_module_update_calendar_events($newcm->modname, null, $newcm);
+
+        // The restore subsystem does not fire course_module_created - which is exactly why core's
+        // duplicate_module() triggers it by hand. Without this, completion, competencies and any
+        // third-party observers never learn the activity exists.
+        $cminfo = get_fast_modinfo($course->id)->get_cm($newcmid);
+        \core\event\course_module_created::create_from_cm($cminfo)->trigger();
+
+        return $newcmid;
+    }
+
+    /**
+     * Take an import-mode backup of one activity.
+     *
+     * Import mode is what keeps this cheap: it writes the backup to a temp directory without
+     * zipping it, and includes no file content - the restore re-links the files already in the
+     * file pool by content hash (restore_dbops::send_files_to_pool()), so a large package costs no
+     * more to copy than a small one.
+     *
+     * @param cm_info $source The activity.
+     * @param progress_base|null $progress Optional progress reporter.
+     * @return array{0: string, 1: string} The backup id, which is also the restore's temp directory
+     *     name, and the full path of that directory for the caller to remove.
+     * @throws moodle_exception If the backup fails or the site will not back activities up.
+     */
+    protected static function backup(cm_info $source, ?progress_base $progress): array {
+        global $CFG;
+
+        $bc = new backup_controller(
+            backup::TYPE_1ACTIVITY,
+            $source->id,
+            backup::FORMAT_MOODLE,
+            backup::INTERACTIVE_NO,
+            backup::MODE_IMPORT,
+            get_admin()->id
+        );
+
+        $backupid = $bc->get_backupid();
+        $basepath = $bc->get_plan()->get_basepath();
+
+        try {
+            if ($progress) {
+                $bc->set_progress($progress);
+            }
+
+            self::disable_backup_settings($bc);
+
+            // A site can lock the import defaults so that activities are left out, in which case
+            // the backup would run, contain nothing, and the restore would fail with a message
+            // about the backup. Say what is actually wrong instead.
+            $plan = $bc->get_plan();
+            if ($plan->setting_exists('activities') && !$plan->get_setting('activities')->get_value()) {
+                throw new moodle_exception('backupnoactivities', 'mod_edpreset');
+            }
+
+            $bc->execute_plan();
+        } catch (Throwable $e) {
+            if (empty($CFG->keeptempdirectoriesonbackup)) {
+                fulldelete($basepath);
+            }
+            throw $e;
+        } finally {
+            $bc->destroy();
+        }
+
+        return [$backupid, $basepath];
+    }
+
+    /**
+     * Restore a backup into a course, leaving nothing behind if it fails.
+     *
+     * @param string $backupid The backup id, which names the temp directory holding it.
+     * @param stdClass $course The target course.
      * @param int $userid The user to run the restore as.
      * @param progress_base|null $progress Optional progress reporter.
      * @return int The new course module id.
      * @throws moodle_exception If the restore fails its precheck or produces no activity.
      */
-    public static function restore_into(
-        stored_file $mbz,
-        stdClass $course,
-        int $sectionnum,
-        int $beforemod = 0,
-        int $userid = 0,
-        ?progress_base $progress = null
-    ): int {
-        global $CFG, $DB, $USER;
-
-        require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-
-        $userid = $userid ?: $USER->id;
-        $coursecontext = \context_course::instance($course->id);
-
-        $tempdir = restore_controller::get_tempdir_name($coursecontext->id, $userid);
-        $fulltempdir = make_backup_temp_directory($tempdir);
-        get_file_packer('application/vnd.moodle.backup')->extract_to_pathname($mbz, $fulltempdir);
-
+    protected static function restore(string $backupid, stdClass $course, int $userid, ?progress_base $progress): int {
         $rc = null;
         try {
             $rc = new restore_controller(
-                $tempdir,
+                $backupid,
                 $course->id,
                 backup::INTERACTIVE_NO,
                 backup::MODE_IMPORT,
@@ -108,91 +263,95 @@ class activity_copier {
                 }
             }
 
-            $rc->execute_plan();
+            try {
+                $rc->execute_plan();
+            } catch (Throwable $e) {
+                self::remove_partial_restore($rc, $course);
+                throw $e;
+            }
+
             // Before dispose() below, which empties the plan's task list and takes the only record
             // of the new course module id with it.
-            $newcmid = self::find_restored_cmid($rc);
+            return self::find_restored_cmid($rc);
         } finally {
             self::dispose($rc);
-            if (empty($CFG->keeptempdirectoriesonbackup)) {
-                fulldelete($fulltempdir);
-            }
         }
-
-        self::place($course, $newcmid, $sectionnum, $beforemod);
-
-        // The restored activity carries the exemplar's idnumber, availability rules and expected
-        // completion date. An idnumber must be unique within a course, availability references
-        // ids that only mean something in the template course, and a date copied from an exemplar
-        // is never the date the teacher wants.
-        $DB->set_field('course_modules', 'idnumber', '', ['id' => $newcmid]);
-        $DB->set_field('course_modules', 'availability', null, ['id' => $newcmid]);
-        $DB->set_field('course_modules', 'completionexpected', 0, ['id' => $newcmid]);
-
-        rebuild_course_cache($course->id, true);
-
-        $newcm = get_coursemodule_from_id('', $newcmid, $course->id, false, MUST_EXIST);
-        course_module_update_calendar_events($newcm->modname, null, $newcm);
-
-        // The restore subsystem does not fire course_module_created - which is exactly why core's
-        // duplicate_module() triggers it by hand. Without this, completion, competencies and any
-        // third-party observers never learn the activity exists.
-        $cminfo = get_fast_modinfo($course->id)->get_cm($newcmid);
-        \core\event\course_module_created::create_from_cm($cminfo)->trigger();
-
-        return $newcmid;
     }
 
     /**
-     * Copy a preset into a course.
+     * Delete whatever a failed restore had already put into the teacher's course.
      *
-     * Any teacher guidance comes with it and needs nothing done here: it is embedded in the
-     * exemplar's own text as local_edguidance tokens, whose blocks ride along in the activity's
-     * backup - see local/edguidance/README.md.
+     * Nothing proves an exemplar restores before a teacher asks for it, so a restore that breaks
+     * part way breaks in their course. The activity task records the course module as soon as it
+     * creates one, which is what lets this find it.
      *
-     * @param preset $preset The preset to copy.
+     * Best effort: the restore's own failure is what the caller reports, so a failure here is
+     * logged rather than thrown over it.
+     *
+     * @param restore_controller $rc The controller whose plan threw.
      * @param stdClass $course The target course.
-     * @param int $sectionnum The section number to place the activity in.
-     * @param int $beforemod Course module id to insert before, or 0 to append.
-     * @param progress_base|null $progress Optional progress reporter.
-     * @return cm_info The new course module.
-     * @throws moodle_exception If the preset has no usable archive.
      */
-    public static function copy(
-        preset $preset,
-        stdClass $course,
-        int $sectionnum,
-        int $beforemod = 0,
-        ?progress_base $progress = null
-    ): cm_info {
-        global $CFG;
+    protected static function remove_partial_restore(restore_controller $rc, stdClass $course): void {
+        global $CFG, $DB;
 
-        // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
-        // bootstrap - so an external function reaching here has nothing loaded.
-        require_once($CFG->dirroot . '/course/lib.php');
+        foreach ($rc->get_plan()->get_tasks() as $task) {
+            if (!is_subclass_of($task, 'restore_activity_task')) {
+                continue;
+            }
 
-        if (!$preset->is_live()) {
-            throw new moodle_exception('backupstale', 'mod_edpreset');
+            $cmid = (int)$task->get_moduleid();
+            if (!$cmid || !$DB->record_exists('course_modules', ['id' => $cmid, 'course' => $course->id])) {
+                continue;
+            }
+
+            // A failed copy is not something the teacher deleted, so it must not turn up in their
+            // course's recycle bin. Forcing the setting for the length of the delete is the same
+            // device the recycle bin itself uses on the backup settings.
+            $forced = $CFG->forced_plugin_settings['tool_recyclebin'] ?? null;
+            $CFG->forced_plugin_settings['tool_recyclebin']['coursebinenable'] = 0;
+            try {
+                course_delete_module($cmid);
+            } catch (Throwable $e) {
+                // The restore can stop before it has created the activity's own record, and
+                // course_delete_module() refuses to go on without one. What exists by then is the
+                // course module and its place in the section.
+                try {
+                    self::remove_course_module($cmid);
+                } catch (Throwable $e) {
+                    debugging(
+                        'mod_edpreset: could not remove a partly restored activity (course module ' . $cmid . '): '
+                            . $e->getMessage(),
+                        DEBUG_NORMAL
+                    );
+                }
+            } finally {
+                if ($forced === null) {
+                    unset($CFG->forced_plugin_settings['tool_recyclebin']);
+                } else {
+                    $CFG->forced_plugin_settings['tool_recyclebin'] = $forced;
+                }
+            }
         }
 
-        $newcmid = self::restore_into(
-            $preset->get_live_file(),
-            $course,
-            $sectionnum,
-            $beforemod,
-            0,
-            $progress
-        );
+        rebuild_course_cache($course->id, true);
+    }
 
-        // Before the modinfo read below, not after: set_coursemodule_name() purges and rebuilds
-        // the course cache, so a rename afterwards would leave the returned cm_info holding the
-        // exemplar's name - which is exactly what the caller displays.
-        $defaultname = trim((string)$preset->get('defaultname'));
-        if ($defaultname !== '') {
-            set_coursemodule_name($newcmid, $defaultname);
+    /**
+     * Remove a course module that never got as far as having an activity behind it.
+     *
+     * @param int $cmid The course module id.
+     */
+    protected static function remove_course_module(int $cmid): void {
+        global $DB;
+
+        $cm = $DB->get_record('course_modules', ['id' => $cmid]);
+        if (!$cm) {
+            return;
         }
 
-        return get_fast_modinfo($course->id)->get_cm($newcmid);
+        delete_mod_from_section($cmid, $cm->section);
+        \context_helper::delete_instance(CONTEXT_MODULE, $cmid);
+        $DB->delete_records('course_modules', ['id' => $cmid]);
     }
 
     /**
@@ -235,10 +394,13 @@ class activity_copier {
                 $cm = self::copy($preset, $course, $sectionnum, $beforemod, $progress);
                 $added[] = $cm;
                 $placed[(int)$preset->get('id')] = (int)$cm->id;
-            } catch (\Throwable $e) {
-                // The teacher is told which preset failed, but not why - the reasons are restore
-                // internals. Keep the real one where an administrator can find it.
+                $preset->clear_copy_error();
+            } catch (Throwable $e) {
+                // The teacher is told which preset failed, but not why - the reasons are backup and
+                // restore internals. Keep the real one where an administrator will see it: against
+                // the preset, for the manage page, and in the debugging output.
                 $failed[] = $preset->get('title');
+                $preset->record_copy_error(get_class($e) . ': ' . $e->getMessage());
                 debugging(
                     'mod_edpreset: could not copy preset ' . $preset->get('id') . ': ' . $e->getMessage(),
                     DEBUG_NORMAL
@@ -388,7 +550,7 @@ class activity_copier {
     /**
      * Tear a restore controller down, whether or not its plan ran to completion.
      *
-     * Both halves matter only because several restores can now run in one request.
+     * Both halves matter only because several restores can run in one request.
      *
      * backup_ids_temp and backup_files_temp are real database temp tables, and there is one pair
      * per connection rather than one per restore. The plan's last step drops them, so a restore
@@ -415,11 +577,40 @@ class activity_copier {
             \restore_controller_dbops::drop_restore_temp_tables($rc->get_restoreid());
         }
 
-        // An archive that is not moodle2 format stops at STATUS_REQUIRE_CONV, before load_plan(),
-        // and destroy() dereferences that plan unguarded. Presets are always baked by this plugin
-        // so this should not happen, but a fatal here would mask whatever really went wrong.
+        // A backup that is not moodle2 format stops at STATUS_REQUIRE_CONV, before load_plan(),
+        // and destroy() dereferences that plan unguarded. The backup is always one this class has
+        // just taken, so this should not happen, but a fatal here would mask whatever really went
+        // wrong.
         if ($rc->get_status() !== backup::STATUS_REQUIRE_CONV) {
             $rc->destroy();
+        }
+    }
+
+    /**
+     * Turn off everything in the backup that would carry user data or template-course specifics.
+     *
+     * Import mode already forces user data off; these are the course-level extras its defaults may
+     * still include. Settings that the site has locked are left alone; set_value() on a locked
+     * setting throws.
+     *
+     * @param backup_controller $bc The controller.
+     */
+    protected static function disable_backup_settings(backup_controller $bc): void {
+        $unwanted = [
+            'users', 'anonymize', 'role_assignments', 'userscompletion', 'logs',
+            'grade_histories', 'groups', 'comments', 'badges', 'calendarevents',
+            'contentbankcontent', 'legacyfiles',
+        ];
+
+        $plan = $bc->get_plan();
+        foreach ($unwanted as $name) {
+            if (!$plan->setting_exists($name)) {
+                continue;
+            }
+            $setting = $plan->get_setting($name);
+            if ($setting->get_status() === \base_setting::NOT_LOCKED) {
+                $setting->set_value(false);
+            }
         }
     }
 
@@ -451,14 +642,12 @@ class activity_copier {
     /**
      * Find the course module the restore just created.
      *
-     * A TYPE_1ACTIVITY archive contains exactly one activity task, so the sole task is taken rather
-     * than matching on the exemplar's stored context id. That keeps this working even if the
-     * exemplar has since been deleted and recreated, which would leave the stored context id
-     * pointing at nothing.
+     * A TYPE_1ACTIVITY backup contains exactly one activity task, so the sole task is taken rather
+     * than matching on the exemplar's context id the way duplicate_module() does.
      *
      * @param restore_controller $rc The controller, after execute_plan().
      * @return int The new course module id.
-     * @throws moodle_exception If the archive did not contain exactly one activity.
+     * @throws moodle_exception If the backup did not contain exactly one activity.
      */
     protected static function find_restored_cmid(restore_controller $rc): int {
         $cmids = [];

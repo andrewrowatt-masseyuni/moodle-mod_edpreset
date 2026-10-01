@@ -16,21 +16,22 @@
 
 namespace mod_edpreset\local\scrub;
 
-use DOMDocument;
-
 /**
- * Zeroes the exemplar's dates so a copied activity does not arrive with last year's due date.
+ * Zeroes a copied activity's dates so it does not arrive with last year's due date.
  *
  * Which fields count as dates is decided by a curated map, NOT by matching column names. A name
  * heuristic was tried and rejected on evidence: over the modules installed here it would have
  * zeroed assign's sendnotifications, sendlatenotifications and sendallocatemarker (booleans) and
  * quiz's timelimit (a duration), while still missing wiki's editbegin and lesson's available.
- * Zeroing a boolean silently changes what the exemplar does, and - unlike breaking the restore -
- * the validation pass would not catch it, because the archive still restores perfectly.
+ * Zeroing a boolean silently changes what the copy does, and nothing downstream would notice:
+ * the activity works, it just works differently from the exemplar.
  *
- * So unknown modules get no date clearing at all. Their dates carry over, the teacher sees them on
- * the settings form that opens immediately afterwards, and fixes them there. That is the explicit
- * trade: a stale date is a visible nuisance, a silently flipped setting is not.
+ * So unknown modules get no date clearing at all. Their dates carry over and the teacher fixes them
+ * on the activity's settings page. That is the explicit trade: a stale date is a visible nuisance,
+ * a silently flipped setting is not.
+ *
+ * Only the activity's own instance row is touched. The module's other tables - user and group
+ * overrides, chiefly - hold user data, which a copy never carries.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -156,43 +157,35 @@ class clear_dates implements rule {
     }
 
     #[\Override]
-    public function apply(string $basepath, string $modname, int $cmid): array {
-        $xmlfile = "$basepath/activities/{$modname}_{$cmid}/{$modname}.xml";
-        if (!is_readable($xmlfile)) {
+    public function apply(string $modname, int $instanceid): array {
+        global $DB;
+
+        $instance = $DB->get_record($modname, ['id' => $instanceid]);
+        if (!$instance) {
             return [];
         }
 
-        $doc = new DOMDocument();
-        if (!$doc->load($xmlfile)) {
-            return [];
-        }
-
-        $cleared = [];
+        $update = ['id' => $instanceid];
         foreach ($this->get_fields($modname) as $field) {
-            $nodes = $doc->getElementsByTagName($field);
-            $changed = 0;
-            // Snapshot first: the node list is live, and writing to it while iterating is unsafe.
-            foreach (iterator_to_array($nodes) as $node) {
-                if ($node->nodeValue !== '0' && trim((string)$node->nodeValue) !== '') {
-                    // Zero rather than empty or remove: module restore steps pass these straight
-                    // to apply_date_offset() and expect an integer, and 0 is Moodle's own
-                    // convention for "no date". Emptying the element risks a failed restore or a
-                    // garbage timestamp.
-                    $node->nodeValue = '0';
-                    $changed++;
-                }
+            // An admin-configured field may be misspelt or belong to another version of the module,
+            // and update_record() would throw on a column that is not there.
+            if (!property_exists($instance, $field)) {
+                continue;
             }
-            if ($changed) {
-                $cleared[] = $field;
+            // Zero rather than null: these are integer columns, mostly NOT NULL, and 0 is Moodle's
+            // own convention for "no date".
+            if ((int)$instance->$field !== 0) {
+                $update[$field] = 0;
             }
         }
 
-        if ($cleared && $doc->save($xmlfile) === false) {
-            // Leaving the file half-written would be worse than not scrubbing at all.
-            throw new \moodle_exception('scrubwritefailed', 'mod_edpreset', '', $xmlfile);
+        if (count($update) === 1) {
+            return [];
         }
 
-        return $cleared;
+        $DB->update_record($modname, (object)$update);
+
+        return array_keys(array_diff_key($update, ['id' => true]));
     }
 
     /**

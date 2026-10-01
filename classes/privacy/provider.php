@@ -36,7 +36,7 @@ use mod_edpreset\preset;
  * Privacy provider for the activity preset provider.
  *
  * The presets themselves hold nothing personal: they describe exemplar activities in a template
- * course, and the stored backups are taken with user data excluded. Three things are personal.
+ * course, and are copied through backups that exclude user data. Three things are personal.
  * Two are about how a teacher uses the preset chooser page - which presets they have starred, and
  * which groups they have collapsed. The third is the authorship stamp core\persistent writes onto
  * both preset tables: usermodified records the curator who last saved the preset's details, and

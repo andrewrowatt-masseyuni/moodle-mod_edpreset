@@ -33,6 +33,7 @@
     * purpose string - MOD_PURPOSE_*, drives the icon colour
     * branded bool
     * favourited bool
+    * inreview bool - the curator has marked this preset ready for review; only reviewers see it
     * addurl string - a copy.php link that ends on the new activity's settings form
     * searchtext string - lowercased name, description, tags and recommended sections, for the text filter
     * tagkeys string - lowercased tags, pipe separated, for the in-page tag filter
@@ -53,6 +54,7 @@
         "purpose": "assessment",
         "branded": false,
         "favourited": false,
+        "inreview": false,
         "addurl": "https://moodle.local/mod/edpreset/copy.php?preset=7",
         "searchtext": "reflective journal assessment",
         "tagkeys": "assessment",
@@ -73,7 +75,10 @@
     <div class="card-body d-flex flex-column">
         <div class="d-flex align-items-center mb-2">
             <h3 class="h6 mb-0 flex-grow-1 edpreset-card-title">{{title}}</h3>
-            <div class="edpreset-card-tools d-flex align-items-center" style="align-self: start;">
+            {{#inreview}}
+                <span class="edpreset-tag edpreset-review ms-2">{{#str}} chooser:inreview, mod_edpreset {{/str}}</span>
+            {{/inreview}}
+            <div class="edpreset-card-tools d-flex align-items-center" style="align-self: start;"><!--
                 <button type="button"
                         class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-zoom text-muted"
                         data-action="preview"
@@ -81,7 +86,7 @@
                         title="{{#str}} chooser:expandsection, mod_edpreset {{/str}}"
                 >
                     <i class="icon fa fa-expand fa-fw" aria-hidden="true"></i>
-                </button>
+                </button>-->
                 <button type="button"
                         class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-star {{#favourited}}text-primary{{/favourited}}{{^favourited}}text-muted{{/favourited}}"
                         data-action="favourite"

@@ -22,8 +22,9 @@ use mod_edpreset\local\baker;
 /**
  * Rescan the whole template course.
  *
- * Only queues per-activity bakes; it does not run them, so this task stays quick however large the
- * template course is.
+ * Queued by the event observers when the template course changes. It only rewrites the preset
+ * records - nothing is backed up until a teacher asks for a copy - so it stays quick however large
+ * the template course is.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -40,9 +41,8 @@ class rebuild_presets extends adhoc_task {
         $result = baker::rebuild();
 
         mtrace(sprintf(
-            'mod_edpreset: %d exemplars scanned, %d bakes queued, %d presets removed.',
+            'mod_edpreset: %d exemplars scanned, %d presets removed.',
             $result['scanned'],
-            $result['queued'],
             $result['removed']
         ));
     }

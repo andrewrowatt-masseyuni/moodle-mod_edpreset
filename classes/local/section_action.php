@@ -109,8 +109,8 @@ class section_action {
 
         if (!isset(self::$offered[$courseid])) {
             // Deliberately not conditional on a section template existing: that would cost a pass
-            // over every preset and its archive on each course page, and the chooser page already
-            // says when there are none to show.
+            // over every preset on each course page, and the chooser page already says when there
+            // are none to show.
             self::$offered[$courseid] = chooser::is_offered_in($course)
                 && access::can_copy_into($course, $sectionnum);
         }

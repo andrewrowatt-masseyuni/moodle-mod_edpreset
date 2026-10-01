@@ -162,6 +162,8 @@ function edpreset_get_form_fieldmap(): array {
         'edpreset_tags' => 'presettags',
         'edpreset_defaultname' => 'presetdefaultname',
         'edpreset_recommendedsection' => 'presetrecommendedsection',
+        'edpreset_status' => 'presetstatus',
+        'edpreset_showinchooser' => 'presetshowinchooser',
     ];
 }
 
@@ -235,7 +237,7 @@ function edpreset_form_wants_details($formwrapper): bool {
         return false;
     }
 
-    // A module that could never be baked into a preset should not be asked to describe itself as
+    // A module that could never be copied as a preset should not be asked to describe itself as
     // one. Subsections and modules without backup support are the two cases.
     return \mod_edpreset\local\baker::modname_is_scannable($current->modulename);
 }
@@ -319,12 +321,31 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             ),
             ['maxlength' => \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH, 'size' => 60]
         ),
+        'edpreset_status' => $mform->createElement(
+            'select',
+            'edpreset_status',
+            get_string('presetstatus', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetstatus_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            ),
+            edpreset_get_status_options()
+        ),
+        'edpreset_showinchooser' => $mform->createElement(
+            'selectyesno',
+            'edpreset_showinchooser',
+            get_string('presetshowinchooser', 'mod_edpreset')
+            . \html_writer::span(
+                get_string('presetshowinchooser_help', 'mod_edpreset'),
+                'edpreset-field-desc d-block small text-muted fw-normal'
+            )
+        ),
     ];
 
     // Only the first and last rows carry the border's top and bottom edges.
     $edgeclasses = [
         'edpreset_detailsheading' => ' edpreset-detail-first',
-        'edpreset_recommendedsection' => ' edpreset-detail-last',
+        'edpreset_showinchooser' => ' edpreset-detail-last',
     ];
 
     foreach (array_keys($elements) as $elementname) {
@@ -357,7 +378,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
 
     $mform->setType('edpreset_presetname', PARAM_TEXT);
     // PARAM_RAW because the field is the rich text editor's HTML: anything narrower strips the
-    // markup the curator just wrote. It is cleaned once, at bake time, by
+    // markup the curator just wrote. It is cleaned once, when the preset is scanned, by
     // format_text(..., ['noclean' => false]) - the same point at which it becomes visible to
     // anyone outside this course. The element registers the types of its own [format] and [itemid]
     // keys when it is created, so only [text] is left to declare, and setType() on the element name
@@ -366,6 +387,14 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
     $mform->setType('edpreset_tags', PARAM_TEXT);
     $mform->setType('edpreset_defaultname', PARAM_TEXT);
     $mform->setType('edpreset_recommendedsection', PARAM_TEXT);
+    $mform->setType('edpreset_status', PARAM_ALPHA);
+    // A new preset starts as a draft, offered to nobody, so a curator can build it up without
+    // teachers picking it up half done.
+    $mform->setDefault('edpreset_status', \mod_edpreset\meta::STATUS_DRAFT);
+    $mform->setType('edpreset_showinchooser', PARAM_BOOL);
+    // Every preset is on the preset chooser page; putting one in the standard activity chooser as
+    // well is an opt-in, because that chooser shows everything it is given at once.
+    $mform->setDefault('edpreset_showinchooser', 0);
 
     $mform->addRule('edpreset_presetname', get_string('required'), 'required', null, 'client');
     // MoodleQuickForm_Rule_Required understands an editor's array value, and formslib appends
@@ -390,7 +419,22 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
         $mform->setDefault('edpreset_tags', $meta->get('tags'));
         $mform->setDefault('edpreset_defaultname', $meta->get('defaultname'));
         $mform->setDefault('edpreset_recommendedsection', $meta->get('recommendedsection'));
+        $mform->setDefault('edpreset_status', $meta->get('status'));
+        $mform->setDefault('edpreset_showinchooser', (int)$meta->get('showinchooser'));
     }
+}
+
+/**
+ * The release statuses a curator can choose from, in the order they move through them.
+ *
+ * @return array<string, string> Status => label.
+ */
+function edpreset_get_status_options(): array {
+    $options = [];
+    foreach (\mod_edpreset\meta::STATUSES as $status) {
+        $options[$status] = get_string('status:' . $status, 'mod_edpreset');
+    }
+    return $options;
 }
 
 /**
@@ -440,6 +484,12 @@ function mod_edpreset_coursemodule_validation($formwrapper, $data) {
         );
     }
 
+    // A select cannot submit anything else from the browser, but a web service or a crafted post can.
+    $status = (string)($data['edpreset_status'] ?? \mod_edpreset\meta::STATUS_DRAFT);
+    if (!in_array($status, \mod_edpreset\meta::STATUSES, true)) {
+        $errors['edpreset_status'] = get_string('invaliddata', 'error');
+    }
+
     $recommendedsection = \mod_edpreset\meta::normalise_section((string)($data['edpreset_recommendedsection'] ?? ''));
     if (\core_text::strlen($recommendedsection) > \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH) {
         $errors['edpreset_recommendedsection'] = get_string(
@@ -487,11 +537,30 @@ function mod_edpreset_coursemodule_edit_post_actions($moduleinfo, $course) {
         'recommendedsection',
         \mod_edpreset\meta::normalise_section((string)($moduleinfo->edpreset_recommendedsection ?? ''))
     );
+    $meta->set('status', (string)($moduleinfo->edpreset_status ?? \mod_edpreset\meta::STATUS_DRAFT));
+    $meta->set('showinchooser', !empty($moduleinfo->edpreset_showinchooser));
 
     if ($meta->get('id')) {
         $meta->update();
     } else {
         $meta->create();
+    }
+
+    // Everything else waits for the rescan this save queues, but the two fields that decide where
+    // a preset is offered are copied across now. Taking a preset back to draft or archiving it is
+    // how a curator withdraws it, and that should not have to wait for cron.
+    $preset = \mod_edpreset\preset::get_record(['templatecmid' => $cmid]);
+    if ($preset) {
+        $changed = false;
+        foreach (['status', 'showinchooser'] as $field) {
+            if ($preset->get($field) != $meta->get($field)) {
+                $preset->set($field, $meta->get($field));
+                $changed = true;
+            }
+        }
+        if ($changed) {
+            $preset->update();
+        }
     }
 
     return $moduleinfo;

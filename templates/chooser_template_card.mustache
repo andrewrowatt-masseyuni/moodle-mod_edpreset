@@ -38,6 +38,7 @@
     * locked bool - a different template has already been used in this course, so this one cannot be
       chosen: the card is greyed out, its button disabled, and a note explaining why sits below it
     * recommended bool - this course's saved default matches this template, so it is suggested
+    * inreview bool - at least one activity in the template is ready for review; only reviewers see those
     * modfullname string - the distinct activity types, e.g. "Book, Page, Quiz"
     * count int - how many activities the template adds
     * addurl string - a copy.php link carrying the template
@@ -61,6 +62,7 @@
         "branded": false,
         "hasmultipletypes": true,
         "locked": false,
+        "inreview": false,
         "modfullname": "Book, Page, Quiz",
         "count": 4,
         "addurl": "https://moodle.local/mod/edpreset/copy.php?template=3",
@@ -94,6 +96,9 @@
                     {{#str}} chooser:recommended, mod_edpreset {{/str}}
                 </span>
             {{/recommended}}
+            {{#inreview}}
+                <span class="edpreset-tag edpreset-review ms-2">{{#str}} chooser:inreview, mod_edpreset {{/str}}</span>
+            {{/inreview}}
             <span class="edpreset-tag edpreset-template-count ms-2">
                 {{#str}} chooser:templatecount, mod_edpreset, {{count}} {{/str}}
             </span>
