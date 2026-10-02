@@ -71,6 +71,15 @@ Feature: Add a whole section of preset activities at once
     And "Prepare for class" "text" should appear before "Engage in class" "text" in the "#section-1 [data-for='cmlist']" "css_element"
     And "Engage in class" "text" should appear before "Consolidate" "text" in the "#section-1 [data-for='cmlist']" "css_element"
 
+  Scenario: A course built from a template can add that template's activities one at a time
+    Given I open the preset chooser for course "C1" section "1"
+    And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"
+    When I open the preset chooser for course "C1" section "2"
+    Then I should see "You can select individual items from this previously used template."
+    And I click on "Add to course" "link" in the "Engage in class" "mod_edpreset > Preset"
+    And I should see "Engage in class" in the "#section-2 [data-for='cmlist']" "css_element"
+    And I should not see "Prepare for class" in the "#section-2 [data-for='cmlist']" "css_element"
+
   Scenario: Adding a template records it as the course's default section template
     When I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Weekly cycle" "mod_edpreset > Section template"

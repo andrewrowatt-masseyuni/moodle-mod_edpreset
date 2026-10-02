@@ -134,6 +134,26 @@ final class access_test extends \advanced_testcase {
     }
 
     /**
+     * A template's activity may be added on its own only to a course built from that template.
+     */
+    public function test_can_add_on_its_own(): void {
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+
+        $individual = $plugingenerator->create_preset();
+        $member = $plugingenerator->create_preset(['sectionnum' => 3, 'templatename' => 'Weekly cycle']);
+
+        $this->assertTrue(access::can_add_on_its_own($individual, ''));
+        $this->assertTrue(access::can_add_on_its_own($individual, 'Weekly cycle'));
+
+        $this->assertTrue(access::can_add_on_its_own($member, 'Weekly cycle'));
+        $this->assertFalse(access::can_add_on_its_own($member, ''));
+        $this->assertFalse(access::can_add_on_its_own($member, 'Induction'));
+        // An exact match, as the one-template lock makes it.
+        $this->assertFalse(access::can_add_on_its_own($member, 'weekly cycle'));
+    }
+
+    /**
      * A course nested two categories down, an editing teacher in it, and a restricted template.
      *
      * @return array{0: \stdClass, 1: \stdClass, 2: \stdClass, 3: \stdClass, 4: section_template}

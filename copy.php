@@ -91,11 +91,17 @@ if ($templatesection) {
         throw new moodle_exception('toomanypresets', 'mod_edpreset', '', access::MAX_PRESETS);
     }
 } else {
+    $usedtemplate = coursedefault::get((int)$course->id);
     foreach (access::clean_presets($presetids) as $presetid) {
         // The release status is checked here as well as in the choosers: a link to a preset the
         // curator has since withdrawn, or one this user was never offered, must not still work.
         $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
         if (!$preset || !$preset->is_offered($canreview)) {
+            throw new moodle_exception('invalidpreset', 'mod_edpreset');
+        }
+        // A template's activities are offered one at a time only to a course built from that
+        // template. The page offering them is the courtesy; this is the control.
+        if (!access::can_add_on_its_own($preset, $usedtemplate)) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
         $presets[] = $preset;
