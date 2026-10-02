@@ -32,6 +32,7 @@
     * modfullname string - the human-readable activity type, e.g. "Assignment"
     * purpose string - MOD_PURPOSE_*, drives the icon colour
     * branded bool
+    * starrable bool - whether the card has a star; a section template's activity offered on its own has none
     * favourited bool
     * inreview bool - the curator has marked this preset ready for review; only reviewers see it
     * addurl string - a copy.php link that ends on the new activity's settings form
@@ -53,6 +54,7 @@
         "modfullname": "Assignment",
         "purpose": "assessment",
         "branded": false,
+        "starrable": true,
         "favourited": false,
         "inreview": false,
         "addurl": "https://moodle.local/mod/edpreset/copy.php?preset=7",
@@ -87,16 +89,18 @@
                 >
                     <i class="icon fa fa-expand fa-fw" aria-hidden="true"></i>
                 </button>-->
-                <button type="button"
-                        class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-star {{#favourited}}text-primary{{/favourited}}{{^favourited}}text-muted{{/favourited}}"
-                        data-action="favourite"
-                        data-favourited="{{#favourited}}1{{/favourited}}{{^favourited}}0{{/favourited}}"
-                        aria-pressed="{{#favourited}}true{{/favourited}}{{^favourited}}false{{/favourited}}"
-                        aria-label="{{#str}} chooser:favourite, mod_edpreset, {{title}} {{/str}}"
-                >
-                    <span class="edpreset-star-on">{{#pix}} i/star, core {{/pix}}</span>
-                    <span class="edpreset-star-off">{{#pix}} i/star-o, core {{/pix}}</span>
-                </button>
+                {{#starrable}}
+                    <button type="button"
+                            class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-star {{#favourited}}text-primary{{/favourited}}{{^favourited}}text-muted{{/favourited}}"
+                            data-action="favourite"
+                            data-favourited="{{#favourited}}1{{/favourited}}{{^favourited}}0{{/favourited}}"
+                            aria-pressed="{{#favourited}}true{{/favourited}}{{^favourited}}false{{/favourited}}"
+                            aria-label="{{#str}} chooser:favourite, mod_edpreset, {{title}} {{/str}}"
+                    >
+                        <span class="edpreset-star-on">{{#pix}} i/star, core {{/pix}}</span>
+                        <span class="edpreset-star-off">{{#pix}} i/star-o, core {{/pix}}</span>
+                    </button>
+                {{/starrable}}
             </div>
         </div>
         <div class="d-flex align-items-center edpreset-modinfo edpreset-modinfo_{{modname}} mb-2">

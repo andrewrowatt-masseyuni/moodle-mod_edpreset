@@ -173,7 +173,9 @@ activity in the section, so putting the activity a teacher would recognise the s
 the section is worth doing.
 
 The activities in a `[Template]` section are offered **only** as part of the template. They do not
-appear individually, in the standard activity chooser or on the preset activities page.
+appear individually, in the standard activity chooser or on the preset activities page — except in a
+course already built from that template (see [Adding a template's activities one at a
+time](#adding-a-templates-activities-one-at-a-time)).
 
 End the name in `[Template,restricted]` instead to offer it only to some courses — see
 [Restricted templates](#restricted-templates).
@@ -222,6 +224,31 @@ Two site settings govern this, both on by default:
 "has nothing released right now". A template whose activities are all back in draft while the curator
 reworks them is still the template the course settled on, and treating it as gone would let the
 course slip its lock for good.
+
+### Adding a template's activities one at a time
+
+Once a course has used a template, the preset activities page offers that template's activities
+individually as well, so a teacher can add one again — one they removed, or a second copy — without
+adding the whole set. They appear in a group of their own, headed with the template's name followed by
+"section template items" — **Asynchronous section template items**, say — just above **Section
+templates**, with the note:
+
+> You can select individual items from this previously used template.
+
+They are ordinary cards: each has its own **Add to course** button and can be selected with any other
+preset for a batch add, with no reorder dialogue. Only the activities the teacher is offered appear,
+by the same [release status](#release-status) rules as the template's own card, and the template is
+still offered whole under **Section templates**. The cards have no star, because a star puts a preset
+in the teacher's activity chooser and a template's activity is never offered there on its own.
+
+"Used" is the course's **Default section template**, the same exact match on the name that the
+one-template lock and restricted templates use. The group is left out of the page's templates-only
+form (the section id link), which is about starting a section from a template.
+
+`copy.php` enforces the rule rather than leaving it to the page: a template's activity can be added on
+its own only to a course whose recorded template is that template. A hand-made link adding one
+anywhere else is refused, which also keeps a restricted template's activities from courses it is
+kept from.
 
 ### Restricted templates
 
@@ -639,6 +666,11 @@ refuses a restricted template (see *Restricted templates*). The chooser page use
 template out, and `copy.php` and `get_template_items` call `require_can_use_template()` before doing
 anything with one. The course's recorded template is read once by the chooser page and passed in,
 just as the one-template lock does.
+
+`local\access::can_add_on_its_own()` is the third, for a template's activities added one at a time:
+only to a course whose recorded template is theirs (see [Adding a template's activities one at a
+time](#adding-a-templates-activities-one-at-a-time)). `copy.php` applies it to every preset in a
+`presets` list, and the chooser page asks it when building the group that offers them.
 
 `local\access::can_review()` decides whether presets ready for review are offered too (see
 [Chooser integration](#chooser-integration)). It checks `mod/edpreset:reviewpresets` in the target

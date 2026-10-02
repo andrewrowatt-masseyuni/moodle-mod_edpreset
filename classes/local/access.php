@@ -121,6 +121,27 @@ class access {
     }
 
     /**
+     * Whether a preset may be added to a course by itself, rather than as part of a whole template.
+     *
+     * Any preset may, except a section template's activities. Those may be added one at a time only
+     * to a course already built from that template - the course whose recorded template is this one -
+     * where the preset chooser page offers them individually. Anywhere else a template comes whole
+     * or not at all: adding its activities piecemeal would mix templates past the one-template lock,
+     * and would hand out a restricted template's activities to courses it is kept from.
+     *
+     * @param \mod_edpreset\preset $preset The preset.
+     * @param string $usedtemplate The template the course has already used, or '' if none.
+     * @return bool
+     */
+    public static function can_add_on_its_own(\mod_edpreset\preset $preset, string $usedtemplate): bool {
+        if (!$preset->is_template_member()) {
+            return true;
+        }
+
+        return $usedtemplate !== '' && $usedtemplate === (string)$preset->get('templatename');
+    }
+
+    /**
      * Whether the current user may see and add a section template in a course.
      *
      * Only a restricted template - one marked [Template,restricted] - is ever refused. It is offered

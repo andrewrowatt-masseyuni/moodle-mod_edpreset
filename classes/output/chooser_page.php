@@ -116,10 +116,14 @@ class chooser_page implements renderable, templatable {
             $templatecards[] = $this->export_template_card($template, $usedtemplate);
         }
 
-        // Starred first, then the individual categories, then the sets last.
+        // Starred first, then the individual categories, then the activities of the template this
+        // course was built from, then the sets last - so the template's pieces sit next to it.
         ['starred' => $starred, 'categories' => $categories] = $this->templatesonly
             ? ['starred' => null, 'categories' => []]
             : $this->export_preset_groups($individuals, $collapsed);
+        $usedtemplategroup = $this->templatesonly
+            ? null
+            : $this->export_used_template_group($templates, $usedtemplate, $collapsed);
 
         $groups = [];
         if ($starred) {
@@ -127,6 +131,10 @@ class chooser_page implements renderable, templatable {
         }
 
         $groups = array_merge($groups, $categories);
+
+        if ($usedtemplategroup) {
+            $groups[] = $usedtemplategroup;
+        }
 
         if ($templatecards) {
             $groups[] = $this->export_group(
@@ -224,6 +232,60 @@ class chooser_page implements renderable, templatable {
     }
 
     /**
+     * The activities of the template this course was built from, offered one at a time.
+     *
+     * Once a course has used a template, a teacher can add more of its activities individually - one
+     * they removed, say, or a second copy of one - without adding the whole set again. The group is
+     * headed "<template name> section template items" and sits just above the section templates
+     * group, next to the template it was taken from. They come as ordinary cards: added by their own
+     * button or selected with the others, with no reorder dialogue. Only the members this user is
+     * offered appear, as on the template's own card.
+     *
+     * The cards carry no star. A star puts a preset in the user's activity chooser, and a template's
+     * activity is never offered there on its own.
+     *
+     * @param section_template[] $templates The templates being shown, keyed by section number.
+     * @param string $usedtemplate The template this course has already used, or '' if none.
+     * @param string[] $collapsed The section keys this user has collapsed.
+     * @return stdClass|null The group, or null if the course has not used a template that is shown.
+     */
+    protected function export_used_template_group(array $templates, string $usedtemplate, array $collapsed): ?stdClass {
+        if ($usedtemplate === '') {
+            return null;
+        }
+
+        foreach ($templates as $template) {
+            if ($template->get_name() !== $usedtemplate) {
+                continue;
+            }
+
+            $cards = [];
+            foreach ($template->get_members() as $member) {
+                // Always true here; asked so that the page and copy.php apply one rule.
+                if (!access::can_add_on_its_own($member, $usedtemplate)) {
+                    continue;
+                }
+                $card = $this->export_card($member, []);
+                $card->starrable = false;
+                $cards[] = $card;
+            }
+
+            return $this->export_group(
+                get_string('chooser:usedtemplateitems', 'mod_edpreset', $template->get_name()),
+                $cards,
+                $collapsed,
+                false,
+                false,
+                \html_writer::tag('p', get_string('chooser:usedtemplatehelp', 'mod_edpreset')),
+                // Kept apart from a category that happens to share the template's name.
+                'usedtemplate:' . $template->get_name()
+            );
+        }
+
+        return null;
+    }
+
+    /**
      * The templates this course and user may see, dropping the restricted ones they may not.
      *
      * A refused template is left out entirely rather than shown locked: unlike the one-template
@@ -301,8 +363,11 @@ class chooser_page implements renderable, templatable {
      * @param string[] $collapsed The section keys this user has collapsed.
      * @param bool $isstarred Whether this is the Starred pseudo-group.
      * @param bool $istemplategroup Whether these are section template cards rather than preset cards.
-     * @param string $summary Cleaned HTML of the section's summary, or '' for none. Only an ordinary
-     *     section's group has one: the template cards carry their own, and Starred is no section.
+     * @param string $summary Cleaned HTML shown under the heading, or '' for none: an ordinary
+     *     section's summary, or a note of the page's own on a pseudo-group such as Starred. The
+     *     section templates group has none, since its cards carry their own.
+     * @param string|null $keysource What the collapse key is derived from, when it should not be the
+     *     heading - a pseudo-group that could share a name with a section. Null for the heading.
      * @return stdClass
      */
     protected function export_group(
@@ -311,9 +376,10 @@ class chooser_page implements renderable, templatable {
         array $collapsed,
         bool $isstarred,
         bool $istemplategroup = false,
-        string $summary = ''
+        string $summary = '',
+        ?string $keysource = null
     ): stdClass {
-        $key = self::section_key($name);
+        $key = self::section_key($keysource ?? $name);
 
         $group = new stdClass();
         $group->name = $name;
@@ -459,6 +525,8 @@ class chooser_page implements renderable, templatable {
         $card->purpose = $preset->get('purpose');
         $card->branded = (bool)$preset->get('branded');
         $card->favourited = in_array($presetid, $favourites, true);
+        // Every card on the page can be starred, except where the caller says otherwise.
+        $card->starrable = true;
         $card->inreview = $preset->is_in_review();
         $card->addurl = $this->add_url($presetid)->out(false);
         $this->export_card_tags($card, $tags, $sections);

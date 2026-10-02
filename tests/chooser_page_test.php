@@ -307,6 +307,109 @@ final class chooser_page_test extends \advanced_testcase {
     }
 
     /**
+     * Create an ordinary preset and two templates, one of them with a draft member.
+     *
+     * @return stdClass The template course.
+     */
+    private function create_presets_and_templates(): stdClass {
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $templatecourse = $plugingenerator->create_template_course();
+
+        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'title' => 'Standalone page']);
+        $weekly = ['templatecourseid' => $templatecourse->id, 'sectionnum' => 3, 'templatename' => 'Weekly cycle'];
+        $plugingenerator->create_preset($weekly + ['title' => 'Prepare for class', 'tags' => 'Prepare']);
+        $plugingenerator->create_preset($weekly + ['title' => 'Engage in class']);
+        $plugingenerator->create_preset($weekly + ['title' => 'Not ready yet', 'status' => meta::STATUS_DRAFT]);
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 4,
+            'templatename' => 'Induction',
+            'title' => 'Welcome forum',
+        ]);
+
+        return $templatecourse;
+    }
+
+    /**
+     * The groups on a page, keyed by heading, in order.
+     *
+     * @param stdClass $data The exported page.
+     * @return stdClass[]
+     */
+    private function groups_by_name(stdClass $data): array {
+        $groups = [];
+        foreach ($data->groups as $group) {
+            $groups[$group->name] = $group;
+        }
+        return $groups;
+    }
+
+    /**
+     * A course built from a template is offered that template's activities one at a time too.
+     *
+     * In a group of their own, named after the template, just above the section templates. Only the
+     * members this user is offered are in it, and as ordinary cards without a star.
+     */
+    public function test_the_template_a_course_used_offers_its_activities_individually(): void {
+        $this->resetAfterTest();
+        $this->create_presets_and_templates();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+        \mod_edpreset\local\coursedefault::set((int)$course->id, 'Weekly cycle');
+
+        $groups = $this->groups_by_name($this->export(false, $course));
+        $name = get_string('chooser:usedtemplateitems', 'mod_edpreset', 'Weekly cycle');
+
+        $this->assertSame('Weekly cycle section template items', $name);
+        $this->assertSame(
+            ['Test category', $name, get_string('chooser:sectiontemplates', 'mod_edpreset')],
+            array_keys($groups)
+        );
+
+        $group = $groups[$name];
+        $this->assertFalse($group->istemplategroup);
+        $this->assertSame(
+            '<p>' . get_string('chooser:usedtemplatehelp', 'mod_edpreset') . '</p>',
+            $group->summary
+        );
+        $this->assertSame(['Prepare for class', 'Engage in class'], array_column($group->cards, 'title'));
+        foreach ($group->cards as $card) {
+            $this->assertFalse($card->starrable, $card->title . ' should have no star');
+            $this->assertStringContainsString('presets=' . $card->presetid, $card->addurl);
+        }
+        $this->assertSame(['Prepare'], $this->names($group->cards[0]->tags));
+
+        // The template itself is still offered whole, and the other template is not split up.
+        $this->assertSame(
+            ['Weekly cycle', 'Induction'],
+            array_column($groups[get_string('chooser:sectiontemplates', 'mod_edpreset')]->cards, 'title')
+        );
+    }
+
+    /**
+     * No template, no group: and none in the page's templates-only form either.
+     */
+    public function test_the_used_template_group_needs_a_used_template(): void {
+        $this->resetAfterTest();
+        $this->create_presets_and_templates();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+
+        $this->assertSame(
+            ['Test category', get_string('chooser:sectiontemplates', 'mod_edpreset')],
+            array_keys($this->groups_by_name($this->export(false, $course)))
+        );
+
+        \mod_edpreset\local\coursedefault::set((int)$course->id, 'Weekly cycle');
+        $this->assertSame(
+            [get_string('chooser:sectiontemplates', 'mod_edpreset')],
+            array_keys($this->groups_by_name($this->export(true, $course)))
+        );
+    }
+
+    /**
      * Cancel goes back to the section the page was opened for, in either of the page's two forms.
      */
     public function test_cancel_returns_to_the_section(): void {
