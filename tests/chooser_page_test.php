@@ -258,8 +258,8 @@ final class chooser_page_test extends \advanced_testcase {
      * Each user sees the presets and template members the release status offers them.
      *
      * A teacher sees only released ones. Someone who can review presets also sees those ready for
-     * review, badged so they can tell them apart. Nobody sees a draft - including as a member of a
-     * template that is otherwise released.
+     * review, in a group of their own with the buttons that release them or return them as drafts.
+     * Nobody sees a draft - including as a member of a template that is otherwise released.
      */
     public function test_release_status_decides_what_each_user_sees(): void {
         global $DB;
@@ -299,9 +299,34 @@ final class chooser_page_test extends \advanced_testcase {
             \context_course::instance($course->id)
         );
         $this->setUser($reviewer);
-        $cards = $this->cards_by_title($this->export(false, $course));
-        $this->assertSame(['Released page', 'Review page', 'Induction'], array_keys($cards));
-        $this->assertTrue($cards['Review page']->inreview);
+        $data = $this->export(false, $course);
+        $groups = $this->groups_by_name($data);
+        $reviewgroup = get_string('chooser:reviewgroup', 'mod_edpreset');
+
+        // Presets in review are in a group of their own, first, and nowhere else as cards.
+        $this->assertSame(
+            [$reviewgroup, 'Test category', get_string('chooser:sectiontemplates', 'mod_edpreset')],
+            array_keys($groups)
+        );
+        $this->assertSame(
+            '<p>' . get_string('chooser:reviewhelp', 'mod_edpreset') . '</p>',
+            $groups[$reviewgroup]->summary
+        );
+        $this->assertSame(['Released page'], array_column($groups['Test category']->cards, 'title'));
+
+        $cards = $this->cards_by_title($data);
+        $this->assertSame(['Review page', 'Review member', 'Released page', 'Induction'], array_keys($cards));
+        foreach (['Review page', 'Review member'] as $title) {
+            $this->assertTrue($cards[$title]->inreview);
+            $this->assertTrue($cards[$title]->reviewable, "$title should have the review buttons");
+            $this->assertFalse($cards[$title]->starrable, "$title should have no star");
+        }
+        $this->assertFalse($cards['Released page']->reviewable);
+
+        // A template's activity in review can be added on its own, like any other card here.
+        $this->assertStringContainsString('presets=' . $cards['Review member']->presetid, $cards['Review member']->addurl);
+
+        // The template still counts it, and says so.
         $this->assertSame(2, $cards['Induction']->count);
         $this->assertTrue($cards['Induction']->inreview);
     }

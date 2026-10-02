@@ -384,9 +384,12 @@ final class lib_test extends \advanced_testcase {
     }
 
     /**
-     * Someone who can review presets is offered those ready for review too, marked as such.
+     * A preset ready for review never reaches the activity chooser, not even a reviewer's.
+     *
+     * Not when its details say to show it there, and not when the reviewer has starred it on the
+     * preset chooser page: reviewers find it in that page's review group instead.
      */
-    public function test_reviewers_are_offered_presets_in_review(): void {
+    public function test_presets_in_review_never_reach_the_activity_chooser(): void {
         global $DB;
         $this->resetAfterTest();
         $generator = $this->getDataGenerator();
@@ -402,30 +405,24 @@ final class lib_test extends \advanced_testcase {
             \context_course::instance($course->id)
         );
 
-        $released = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'title' => 'Released one']);
+        $released = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id]);
         $inreview = $plugingenerator->create_preset([
             'templatecourseid' => $templatecourse->id,
-            'title' => 'Reviewed one',
             'status' => meta::STATUS_REVIEW,
+            'showinchooser' => 1,
         ]);
-        $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'status' => meta::STATUS_DRAFT]);
 
-        $titles = [];
-        foreach ($this->our_items($reviewer, $course) as $item) {
-            $titles[(int)$item->id] = $item->title;
-        }
+        $this->setUser($reviewer);
+        \mod_edpreset\external\set_favourite::execute((int)$inreview->get('id'), true);
 
         $this->assertSame(
-            [
-                (int)$released->get('id') => 'Released one',
-                (int)$inreview->get('id') => get_string('chooser:reviewtitle', 'mod_edpreset', 'Reviewed one'),
-            ],
-            $titles
+            [(int)$released->get('id')],
+            array_map(fn($item) => (int)$item->id, $this->our_items($reviewer, $course))
         );
 
-        // The context-free list carries them too, or a reviewer's star would land on something else.
+        // Nor in the context-free list: it can never be starred or recommended there.
         $allids = array_map(fn($item) => $item->get_id(), chooser::get_all_content_items());
-        $this->assertContains((int)$inreview->get('id'), $allids);
+        $this->assertNotContains((int)$inreview->get('id'), $allids);
     }
 
     /**

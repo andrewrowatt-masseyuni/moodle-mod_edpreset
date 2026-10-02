@@ -59,9 +59,10 @@ The plugin does nothing until it is enabled and pointed at a template course.
 
 5. Open **Site administration → Plugins → Activity modules → Manage preset activities** to see every
    preset with its release status and any copy that has failed, and to rescan the template course.
-6. Give the people who will review presets before they are released the **See and add preset
-   activities that are ready for review** capability (`mod/edpreset:reviewpresets`) - see
-   [Reviewing presets](#reviewing-presets).
+6. Give the people who will review presets before they are released the **Review preset
+   activities** capability (`mod/edpreset:reviewpresets`) - see [Reviewing presets](#reviewing-presets).
+   It carries the configuration risk flag: releasing a preset changes what every teacher on the site is
+   offered.
 
 Upgrading from a version before 0.8.0 leaves behind the hidden course earlier versions used for test
 restores (short name `edpreset_restore_test` unless it was changed). Nothing uses it any more, and it
@@ -108,7 +109,7 @@ work on a preset without teachers picking it up half done.
 | Status | Offered to |
 | --- | --- |
 | **Draft** | Nobody. Where every new preset starts. |
-| **Ready for review** | Only people who can review presets - see below. They see it marked **For review**. |
+| **Ready for review** | Only people who can review presets, and only on the preset activities page - see below. Never in the activity chooser. |
 | **Released** | Every teacher who can add presets. |
 | **Archived** | Nobody. Kept, with any stars teachers gave it, in case it comes back. |
 
@@ -127,9 +128,26 @@ until it is released.
 ### Reviewing presets
 
 Anyone with `mod/edpreset:reviewpresets` in a course is offered the presets that are **Ready for
-review** there, alongside the released ones, in both the activity chooser (titled "… (for review)")
-and the preset activities page (with a **For review** badge). They can add them like any other
-preset, which is the point: adding one to a course is how it is reviewed.
+review** there, on the preset activities page only — never in the activity chooser, whatever the
+preset's **Show in activity chooser** says, and whether or not the reviewer has starred it. They are
+in a group of their own at the top of the page, **Presets ready for review**, with the note:
+
+> New or revised presets that are flagged for review. Add them to a course, and if they are working
+> as expected, return here and click "Release", or "Return as draft" if further changes are
+> required.
+
+and nowhere else on the page as cards. Each card has a **For review** badge, no star, and two
+buttons underneath its own: **Release**, which offers the preset to every teacher, and **Return as
+draft**, which hands it back to its curator. Either saves the status at once - to the preset details
+and the preset alike, as saving its settings form does - and reloads the page. Only a preset still in
+review can be decided on, so a page left open cannot withdraw a preset someone has since released.
+
+A reviewer adds a preset in review like any other preset: adding it to a course is how it is
+reviewed. That includes a section template's activity in review, which a reviewer can add on its own
+to any course its template could go into - the one exception to [adding a template's activities one
+at a time](#adding-a-templates-activities-one-at-a-time) only in a course built from the template. A
+restricted template's activity still goes only where the template itself may. The template keeps
+counting it too, badged **For review**, so it can also be tried out as part of the whole set.
 
 The capability is checked in the course the preset would be added to, so it can be granted through a
 site-wide role or through a role in particular courses. Managers hold it by default.
@@ -246,9 +264,9 @@ one-template lock and restricted templates use. The group is left out of the pag
 form (the section id link), which is about starting a section from a template.
 
 `copy.php` enforces the rule rather than leaving it to the page: a template's activity can be added on
-its own only to a course whose recorded template is that template. A hand-made link adding one
-anywhere else is refused, which also keeps a restricted template's activities from courses it is
-kept from.
+its own only to a course whose recorded template is that template, or by a reviewer while it is ready
+for review (see [Reviewing presets](#reviewing-presets)). A hand-made link adding one anywhere else is
+refused, which also keeps a restricted template's activities from courses it is kept from.
 
 ### Restricted templates
 
@@ -441,9 +459,9 @@ to everyone, presets ready for review to holders of `mod/edpreset:reviewpresets`
 the reorder dialogue's web service all ask it, so a link to a preset that has since been withdrawn
 stops working.
 
-`get_all_content_items()` includes the presets ready for review, for the same reason it includes the
-ones the course chooser leaves out: a reviewer can star one, and the star is resolved against this
-list.
+The activity chooser is the exception: `chooser::get_content_items()` and `get_all_content_items()`
+offer released presets only, so a preset ready for review is never there, for anyone. Reviewers find
+it in the preset chooser page's review group.
 
 ### Curator form extension
 
@@ -669,7 +687,8 @@ just as the one-template lock does.
 
 `local\access::can_add_on_its_own()` is the third, for a template's activities added one at a time:
 only to a course whose recorded template is theirs (see [Adding a template's activities one at a
-time](#adding-a-templates-activities-one-at-a-time)). `copy.php` applies it to every preset in a
+time](#adding-a-templates-activities-one-at-a-time)), or by a reviewer while one is ready for review,
+wherever its template could go (the restricted-template test above, applied to the activity). `copy.php` applies it to every preset in a
 `presets` list, and the chooser page asks it when building the group that offers them.
 
 `local\access::can_review()` decides whether presets ready for review are offered too (see
@@ -701,8 +720,8 @@ section around them: `core\progress\base` throws "parent progress would exceed m
 
 ### Web services and user preferences
 
-`mod_edpreset_set_favourite` and `mod_edpreset_get_template_items` are AJAX-only and not part of any
-service — they exist for the preset chooser page's JavaScript, not as a public API. Copying is
+`mod_edpreset_set_favourite`, `mod_edpreset_get_template_items` and `mod_edpreset_set_status` are
+AJAX-only and not part of any service — they exist for the preset chooser page's JavaScript, not as a public API. Copying is
 deliberately a form post rather than a web service, so that one restore or ten happen in a single
 request; the reorder dialogue only computes an order, writes it into that same form and submits it,
 so a template added through the dialogue and one added by following its card's link reach `copy.php`
@@ -712,6 +731,14 @@ by exactly the same route.
 page may have been open a while, and what the teacher has to arrange is the section as it is now. The
 page does carry a `sectionactivitycount`, but only so that adding to an empty section — the common
 case, and the one where no dialogue is wanted — costs no round trip at all.
+
+`set_status` records a review's outcome (see [Reviewing presets](#reviewing-presets)) through
+`local\review::decide()`. It checks `mod/edpreset:reviewpresets` in the course the page is open for,
+as everything else about review does, and accepts only `released` or `draft`, only for a preset still
+in review. The page reloads once it succeeds rather than patching itself: a released preset moves to
+its category and may join Starred and the activity chooser, and a template's counts change, all of
+which the page already knows how to lay out. The script deliberately leaves its pending marker
+unresolved across that reload, so Behat waits for the new page rather than reading the old one.
 
 The dialogue is built with `core/modal_save_cancel` (`core/modal_factory` has been deprecated since
 4.3) and `core/sortable_list`. The sortable list is constructed from a **selector string**, not from

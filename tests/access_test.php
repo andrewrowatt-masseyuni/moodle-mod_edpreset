@@ -139,18 +139,54 @@ final class access_test extends \advanced_testcase {
     public function test_can_add_on_its_own(): void {
         $this->resetAfterTest();
         $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $course = $this->getDataGenerator()->create_course();
 
         $individual = $plugingenerator->create_preset();
         $member = $plugingenerator->create_preset(['sectionnum' => 3, 'templatename' => 'Weekly cycle']);
 
-        $this->assertTrue(access::can_add_on_its_own($individual, ''));
-        $this->assertTrue(access::can_add_on_its_own($individual, 'Weekly cycle'));
+        $this->assertTrue(access::can_add_on_its_own($course, $individual, '', false));
+        $this->assertTrue(access::can_add_on_its_own($course, $individual, 'Weekly cycle', false));
 
-        $this->assertTrue(access::can_add_on_its_own($member, 'Weekly cycle'));
-        $this->assertFalse(access::can_add_on_its_own($member, ''));
-        $this->assertFalse(access::can_add_on_its_own($member, 'Induction'));
+        $this->assertTrue(access::can_add_on_its_own($course, $member, 'Weekly cycle', false));
+        $this->assertFalse(access::can_add_on_its_own($course, $member, '', false));
+        $this->assertFalse(access::can_add_on_its_own($course, $member, 'Induction', false));
         // An exact match, as the one-template lock makes it.
-        $this->assertFalse(access::can_add_on_its_own($member, 'weekly cycle'));
+        $this->assertFalse(access::can_add_on_its_own($course, $member, 'weekly cycle', false));
+        // Being able to review is no help with an activity that is not in review.
+        $this->assertFalse(access::can_add_on_its_own($course, $member, '', true));
+    }
+
+    /**
+     * A reviewer may add a template's activity in review on its own, wherever its template could go.
+     */
+    public function test_a_reviewer_can_add_a_template_activity_in_review_on_its_own(): void {
+        [$course, $top, , $teacher] = $this->setup_restricted();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+
+        $member = $plugingenerator->create_preset([
+            'sectionnum' => 5,
+            'templatename' => 'Weekly cycle',
+            'status' => meta::STATUS_REVIEW,
+        ]);
+        $restricted = $plugingenerator->create_preset([
+            'sectionnum' => 6,
+            'templatename' => 'Learning model',
+            'templaterestricted' => 1,
+            'status' => meta::STATUS_REVIEW,
+        ]);
+
+        $this->setUser($teacher);
+        $this->assertTrue(access::can_add_on_its_own($course, $member, '', true));
+        $this->assertFalse(access::can_add_on_its_own($course, $member, '', false), 'only a reviewer may');
+
+        // A restricted template's activity goes only where the template itself may.
+        $this->assertFalse(access::can_add_on_its_own($course, $restricted, '', true));
+        $this->assertTrue(access::can_add_on_its_own($course, $restricted, 'Learning model', true));
+
+        $manager = $this->getDataGenerator()->create_user();
+        $this->getDataGenerator()->role_assign('manager', $manager->id, \context_coursecat::instance($top->id)->id);
+        $this->setUser($manager);
+        $this->assertTrue(access::can_add_on_its_own($course, $restricted, '', true));
     }
 
     /**

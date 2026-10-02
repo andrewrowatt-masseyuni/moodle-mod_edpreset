@@ -109,23 +109,39 @@ class chooser_page implements renderable, templatable {
         // A section template is offered as a set, so its members never become cards of their own.
         $templates = $this->usable_templates(section_template::from_presets($presets), $usedtemplate);
         $presets = $this->without_hidden_members($presets, $templates);
-        $individuals = array_values(array_filter($presets, fn(preset $preset) => !$preset->is_template_member()));
+
+        // Presets ready for review - only ever offered to someone who can review them - are pulled out
+        // into a group of their own, and appear nowhere else as cards: that group is where they are
+        // released or returned. A template still counts its members in review, since adding the
+        // template is how they are tried out.
+        $inreview = array_values(array_filter($presets, fn(preset $preset) => $preset->is_in_review()));
+        $individuals = array_values(array_filter(
+            $presets,
+            fn(preset $preset) => !$preset->is_template_member() && !$preset->is_in_review()
+        ));
 
         $templatecards = [];
         foreach ($templates as $template) {
             $templatecards[] = $this->export_template_card($template, $usedtemplate);
         }
 
-        // Starred first, then the individual categories, then the activities of the template this
-        // course was built from, then the sets last - so the template's pieces sit next to it.
+        // The reviewer's queue first, then Starred, then the individual categories, then the
+        // activities of the template this course was built from, then the sets last - so the
+        // template's pieces sit next to it.
         ['starred' => $starred, 'categories' => $categories] = $this->templatesonly
             ? ['starred' => null, 'categories' => []]
             : $this->export_preset_groups($individuals, $collapsed);
         $usedtemplategroup = $this->templatesonly
             ? null
             : $this->export_used_template_group($templates, $usedtemplate, $collapsed);
+        $reviewgroup = ($this->templatesonly || !$inreview)
+            ? null
+            : $this->export_review_group($inreview, $collapsed);
 
         $groups = [];
+        if ($reviewgroup) {
+            $groups[] = $reviewgroup;
+        }
         if ($starred) {
             $groups[] = $starred;
         }
@@ -232,14 +248,49 @@ class chooser_page implements renderable, templatable {
     }
 
     /**
+     * The presets ready for review, each with the buttons that release it or return it as a draft.
+     *
+     * Only someone who can review presets is offered any, so only they ever see this group. Its cards
+     * have no star - a star puts a preset in the activity chooser, which never offers one in review.
+     *
+     * A section template's activity in review is here too, and can be added on its own like any other
+     * card: access::can_add_on_its_own() lets a reviewer do that wherever its template could go, and
+     * a template this course may not use has already had its members taken off the page.
+     *
+     * @param preset[] $presets The presets ready for review.
+     * @param string[] $collapsed The section keys this user has collapsed.
+     * @return stdClass
+     */
+    protected function export_review_group(array $presets, array $collapsed): stdClass {
+        $cards = [];
+        foreach ($presets as $preset) {
+            $card = $this->export_card($preset, []);
+            $card->starrable = false;
+            $card->reviewable = true;
+            $cards[] = $card;
+        }
+
+        return $this->export_group(
+            get_string('chooser:reviewgroup', 'mod_edpreset'),
+            $cards,
+            $collapsed,
+            false,
+            false,
+            \html_writer::tag('p', get_string('chooser:reviewhelp', 'mod_edpreset')),
+            // Kept apart from a category that happens to share the group's name.
+            'review:'
+        );
+    }
+
+    /**
      * The activities of the template this course was built from, offered one at a time.
      *
      * Once a course has used a template, a teacher can add more of its activities individually - one
      * they removed, say, or a second copy of one - without adding the whole set again. The group is
      * headed "<template name> section template items" and sits just above the section templates
      * group, next to the template it was taken from. They come as ordinary cards: added by their own
-     * button or selected with the others, with no reorder dialogue. Only the members this user is
-     * offered appear, as on the template's own card.
+     * button or selected with the others, with no reorder dialogue. Only the released members
+     * appear: one ready for review is in the review group instead (see export_review_group()).
      *
      * The cards carry no star. A star puts a preset in the user's activity chooser, and a template's
      * activity is never offered there on its own.
@@ -262,7 +313,11 @@ class chooser_page implements renderable, templatable {
             $cards = [];
             foreach ($template->get_members() as $member) {
                 // Always true here; asked so that the page and copy.php apply one rule.
-                if (!access::can_add_on_its_own($member, $usedtemplate)) {
+                if (!access::can_add_on_its_own($this->course, $member, $usedtemplate, false)) {
+                    continue;
+                }
+                // A member in review is in the review group instead, with the buttons that decide it.
+                if ($member->is_in_review()) {
                     continue;
                 }
                 $card = $this->export_card($member, []);
@@ -525,8 +580,10 @@ class chooser_page implements renderable, templatable {
         $card->purpose = $preset->get('purpose');
         $card->branded = (bool)$preset->get('branded');
         $card->favourited = in_array($presetid, $favourites, true);
-        // Every card on the page can be starred, except where the caller says otherwise.
+        // Every card on the page can be starred, and none has review buttons, except where the
+        // caller says otherwise.
         $card->starrable = true;
+        $card->reviewable = false;
         $card->inreview = $preset->is_in_review();
         $card->addurl = $this->add_url($presetid)->out(false);
         $this->export_card_tags($card, $tags, $sections);

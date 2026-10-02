@@ -40,13 +40,15 @@ Feature: Offer each preset according to its release status
     Given I log in as "teacher1"
     When I open the preset chooser for course "C1" section "1"
     Then I should see "Released page"
+    And I should not see "Presets ready for review"
     And I should not see "Review page"
     And I should not see "Draft page"
 
   Scenario: A reviewer is also offered presets ready for review, marked as such
     Given I log in as "reviewer1"
     When I open the preset chooser for course "C1" section "1"
-    Then I should see "Released page"
+    Then I should see "Presets ready for review"
+    And I should see "Released page"
     And I should see "For review" in the "Review page" "mod_edpreset > Preset"
     And I should not see "For review" in the "Released page" "mod_edpreset > Preset"
     And I should not see "Draft page"
@@ -56,3 +58,41 @@ Feature: Offer each preset according to its release status
     When I open the preset chooser for course "C1" section "1"
     And I click on "Add to course" "link" in the "Review page" "mod_edpreset > Preset"
     Then I should see "Review page" in the "#section-1 [data-for='cmlist']" "css_element"
+
+  Scenario: A reviewer can add a section template's activity that is ready for review on its own
+    Given the following "mod_edpreset > sections" exist:
+      | course | section | name                    |
+      | TPL    | 2       | Weekly cycle [Template] |
+    And the following "activities" exist:
+      | activity | course | section | name           | idnumber |
+      | page     | TPL    | 2       | Revised member | member   |
+    And the following "mod_edpreset > preset details" exist:
+      | activity | presetname     | description         | status |
+      | member   | Revised member | A revised activity. | review |
+    And the mod_edpreset presets have been scanned
+    And I log in as "reviewer1"
+    When I open the preset chooser for course "C1" section "1"
+    And I click on "Add to course" "link" in the "Revised member" "mod_edpreset > Preset"
+    Then I should see "Revised member" in the "#section-1 [data-for='cmlist']" "css_element"
+
+  @javascript
+  Scenario: A reviewer releases a preset, and it is offered to every teacher
+    Given I log in as "reviewer1"
+    And I open the preset chooser for course "C1" section "1"
+    When I click on "Release" "button" in the "Review page" "mod_edpreset > Preset"
+    Then I should not see "Presets ready for review"
+    And I should see "Review page"
+    And I should not see "For review" in the "Review page" "mod_edpreset > Preset"
+    And I log out
+    And I log in as "teacher1"
+    And I open the preset chooser for course "C1" section "1"
+    And I should see "Review page"
+
+  @javascript
+  Scenario: A reviewer returns a preset as a draft, and it is offered to nobody
+    Given I log in as "reviewer1"
+    And I open the preset chooser for course "C1" section "1"
+    When I click on "Return as draft" "button" in the "Review page" "mod_edpreset > Preset"
+    Then I should not see "Presets ready for review"
+    And I should not see "Review page"
+    And I should see "Released page"
