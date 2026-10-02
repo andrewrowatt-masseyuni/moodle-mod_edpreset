@@ -66,8 +66,9 @@ class chooser {
      *
      * Access is already gated upstream: content_item_service requires moodle/course:manageactivities
      * and applies course_allowed_module() (i.e. mod/edpreset:addinstance) to everything we return.
-     * Which presets are offered past that is the release status, and whether this user may review
-     * presets in this course.
+     * Past that, only released presets come here. One ready for review never does, whatever its
+     * details say and whoever is asking: reviewers find it in its own group on the preset chooser
+     * page, with the buttons that release it.
      *
      * @param stdClass $course The course whose chooser is being built.
      * @param stdClass $user The user the chooser is being built for.
@@ -81,7 +82,7 @@ class chooser {
         $starred = chooser_page::get_favourited_ids($user);
 
         $items = [];
-        foreach (self::get_offered_presets(access::can_review($course, $user)) as $preset) {
+        foreach (self::get_offered_presets(false) as $preset) {
             // A section template is offered as a set or not at all, so its members never appear
             // here - not even one whose curator has marked it for the activity chooser.
             if ($preset->is_template_member()) {
@@ -196,9 +197,6 @@ class chooser {
      * The placeholder is not included: it renders without a star (see PLACEHOLDER_ID), so nothing
      * can ever ask to favourite it.
      *
-     * Presets ready for review are included for the same reason: whoever may review them can star
-     * them in the standard chooser, and there is no user here to ask.
-     *
      * @return content_item[]
      */
     public static function get_all_content_items(): array {
@@ -207,7 +205,9 @@ class chooser {
         }
 
         $items = [];
-        foreach (self::get_offered_presets(true) as $preset) {
+        // Released only, as for get_content_items(): a preset ready for review is never in the
+        // standard chooser, so it can never be starred or recommended there.
+        foreach (self::get_offered_presets(false) as $preset) {
             // Kept out for the same reason as get_content_items(): a member is never offered on its
             // own, so it can never carry a star, and it must not be recommendable by itself either.
             // Excluding it from both lists together preserves the superset relationship this list
@@ -282,7 +282,7 @@ class chooser {
         return new content_item(
             (int)$preset->get('id'),
             self::item_name($preset),
-            new string_title(self::item_title($preset)),
+            new string_title($preset->get('title')),
             self::item_link($preset, $course),
             self::item_icon($preset),
             (string)$preset->get('help'),
@@ -291,23 +291,6 @@ class chooser {
             $preset->get('purpose'),
             (bool)$preset->get('branded')
         );
-    }
-
-    /**
-     * The item's title.
-     *
-     * A preset ready for review says so, because the standard chooser has nowhere else to show it
-     * and the people who see one are the people who need to tell it apart from a released one.
-     *
-     * @param preset $preset The preset.
-     * @return string
-     */
-    protected static function item_title(preset $preset): string {
-        $title = (string)$preset->get('title');
-
-        return $preset->is_in_review()
-            ? get_string('chooser:reviewtitle', 'mod_edpreset', $title)
-            : $title;
     }
 
     /**

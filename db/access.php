@@ -43,10 +43,13 @@ $capabilities = [
     ],
 
     // Lets a user see and add presets whose curator has marked them "Ready for review", alongside
-    // the released ones everyone sees. Checked in the target course's context, so it can be granted
-    // through a site-wide role or through a role in particular courses.
+    // the released ones everyone sees, and release them or return them as drafts. Checked in the
+    // target course's context, so it can be granted through a site-wide role or through a role in
+    // particular courses. RISK_CONFIG because releasing a preset changes what every teacher on the
+    // site is offered.
     'mod/edpreset:reviewpresets' => [
-        'captype' => 'read',
+        'riskbitmask' => RISK_CONFIG,
+        'captype' => 'write',
         'contextlevel' => CONTEXT_COURSE,
         'archetypes' => [
             'manager' => CAP_ALLOW,

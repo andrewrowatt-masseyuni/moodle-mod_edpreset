@@ -484,6 +484,38 @@
     cursor: default;
 }
 
+/* The buttons that decide a review, in the same amber as the badge that marks one. A zero basis
+   rather than flex-grow alone, so the two are the same width whatever their labels' lengths. */
+.edpreset-chooser .edpreset-review-actions > .btn {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.edpreset-chooser .edpreset-review-release {
+    background-color: #8a5300;
+    border-color: #8a5300;
+    color: #fff;
+}
+
+.edpreset-chooser .edpreset-review-release:hover,
+.edpreset-chooser .edpreset-review-release:focus {
+    background-color: #6e4200;
+    border-color: #6e4200;
+    color: #fff;
+}
+
+.edpreset-chooser .edpreset-review-return {
+    background-color: rgba(176, 106, 0, 0.12);
+    border-color: rgba(176, 106, 0, 0.35);
+    color: #8a5300;
+}
+
+.edpreset-chooser .edpreset-review-return:hover,
+.edpreset-chooser .edpreset-review-return:focus {
+    background-color: rgba(176, 106, 0, 0.22);
+    color: #6e4200;
+}
+
 /* Shown only to reviewers, on a preset or template the curator has marked ready for review. */
 .edpreset-chooser .edpreset-review {
     flex-shrink: 0;

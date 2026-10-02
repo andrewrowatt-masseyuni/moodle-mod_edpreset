@@ -123,22 +123,43 @@ class access {
     /**
      * Whether a preset may be added to a course by itself, rather than as part of a whole template.
      *
-     * Any preset may, except a section template's activities. Those may be added one at a time only
-     * to a course already built from that template - the course whose recorded template is this one -
+     * Any preset may, except a section template's activities. Those may be added one at a time to a
+     * course already built from that template - the course whose recorded template is this one -
      * where the preset chooser page offers them individually. Anywhere else a template comes whole
      * or not at all: adding its activities piecemeal would mix templates past the one-template lock,
      * and would hand out a restricted template's activities to courses it is kept from.
      *
+     * Except while one is ready for review: then whoever can review presets may add it on its own to
+     * any course its template could go into, which is how it is tried out before being released. A
+     * restricted template's activity still goes only where the template itself may.
+     *
+     * @param stdClass $course The target course.
      * @param \mod_edpreset\preset $preset The preset.
      * @param string $usedtemplate The template the course has already used, or '' if none.
+     * @param bool $canreview Whether the user can review presets in the course (see can_review()).
      * @return bool
      */
-    public static function can_add_on_its_own(\mod_edpreset\preset $preset, string $usedtemplate): bool {
+    public static function can_add_on_its_own(
+        stdClass $course,
+        \mod_edpreset\preset $preset,
+        string $usedtemplate,
+        bool $canreview
+    ): bool {
         if (!$preset->is_template_member()) {
             return true;
         }
 
-        return $usedtemplate !== '' && $usedtemplate === (string)$preset->get('templatename');
+        if ($usedtemplate !== '' && $usedtemplate === (string)$preset->get('templatename')) {
+            return true;
+        }
+
+        if ($canreview && $preset->is_in_review()) {
+            // The same test can_use_template() applies to the whole template, for a course that has
+            // not used it - which this one has not, or the match above would have returned already.
+            return !$preset->get('templaterestricted') || self::can_use_restricted_templates($course);
+        }
+
+        return false;
     }
 
     /**

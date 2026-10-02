@@ -50,6 +50,9 @@ const SELECTORS = {
     SELECT: '[data-action="select"]',
     FAVOURITE: '[data-action="favourite"]',
     TOGGLEGROUP: '[data-action="togglegroup"]',
+    RELEASE: '[data-action="release"]',
+    RETURNTODRAFT: '[data-action="returntodraft"]',
+    REVIEWACTIONS: '[data-region="reviewactions"]',
 };
 
 const PREFERENCE_COLLAPSED = 'mod_edpreset_collapsed';
@@ -300,6 +303,10 @@ const toggleFavourite = async(presetid, button) => {
 
         root.querySelectorAll(`${SELECTORS.CARD}[data-presetid="${presetid}"]`).forEach((card) => {
             const star = card.querySelector(SELECTORS.FAVOURITE);
+            // Not every card has a star: a preset in review, or a template's activity, has none.
+            if (!star) {
+                return;
+            }
             star.dataset.favourited = favourite ? '1' : '0';
             star.setAttribute('aria-pressed', favourite ? 'true' : 'false');
             star.classList.toggle('text-primary', favourite);
@@ -310,6 +317,47 @@ const toggleFavourite = async(presetid, button) => {
     }
 
     pending.resolve();
+};
+
+/**
+ * Release a preset that is ready for review, or return it to its curator as a draft.
+ *
+ * The page is reloaded once the status is saved rather than patched in place: a released preset
+ * moves to its category, may join Starred and the activity chooser, and a template's counts change,
+ * all of which the server already knows how to lay out.
+ *
+ * @param {number} presetid
+ * @param {string} status released or draft
+ * @param {HTMLElement} button The button that was clicked.
+ * @returns {Promise<void>}
+ */
+const setStatus = async(presetid, status, button) => {
+    const pending = new Pending('mod_edpreset/chooser:status');
+    const buttons = button.closest(SELECTORS.REVIEWACTIONS).querySelectorAll('button');
+    // A second click while the first is in flight would only meet a preset no longer in review.
+    buttons.forEach((other) => {
+        other.disabled = true;
+    });
+
+    try {
+        await fetchMany([{
+            methodname: 'mod_edpreset_set_status',
+            args: {
+                presetid,
+                courseid: parseInt(root.querySelector(SELECTORS.ADDFORM).querySelector('[name="course"]').value, 10),
+                status,
+            },
+        }])[0];
+        // Deliberately left pending: the reload discards it along with the page, and anything waiting
+        // on the page - Behat included - then waits for the new one rather than reading the old.
+        window.location.reload();
+    } catch (error) {
+        buttons.forEach((other) => {
+            other.disabled = false;
+        });
+        Notification.exception(error);
+        pending.resolve();
+    }
 };
 
 /**
@@ -400,6 +448,13 @@ export const init = () => {
         if (favourite) {
             const presetid = parseInt(favourite.closest(SELECTORS.CARD).dataset.presetid, 10);
             toggleFavourite(presetid, favourite);
+            return;
+        }
+
+        const decision = event.target.closest(`${SELECTORS.RELEASE}, ${SELECTORS.RETURNTODRAFT}`);
+        if (decision) {
+            const presetid = parseInt(decision.closest(SELECTORS.CARD).dataset.presetid, 10);
+            setStatus(presetid, decision.matches(SELECTORS.RELEASE) ? 'released' : 'draft', decision);
             return;
         }
 

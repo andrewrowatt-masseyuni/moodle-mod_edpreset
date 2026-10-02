@@ -35,6 +35,13 @@ $functions = [
         'type' => 'read',
         'ajax' => true,
     ],
+    'mod_edpreset_set_status' => [
+        'classname' => 'mod_edpreset\external\set_status',
+        'description' => 'Release a preset activity that is ready for review, or return it to its curator as a draft.',
+        'type' => 'write',
+        'ajax' => true,
+        'capabilities' => 'mod/edpreset:reviewpresets',
+    ],
     'mod_edpreset_set_favourite' => [
         'classname' => 'mod_edpreset\external\set_favourite',
         'description' => 'Star or unstar a preset activity for the current user.',

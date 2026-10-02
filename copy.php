@@ -100,8 +100,9 @@ if ($templatesection) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
         // A template's activities are offered one at a time only to a course built from that
-        // template. The page offering them is the courtesy; this is the control.
-        if (!access::can_add_on_its_own($preset, $usedtemplate)) {
+        // template, or to a reviewer while they are ready for review. The page offering them is the
+        // courtesy; this is the control.
+        if (!access::can_add_on_its_own($course, $preset, $usedtemplate, $canreview)) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
         $presets[] = $preset;

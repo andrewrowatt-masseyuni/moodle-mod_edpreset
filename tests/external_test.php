@@ -18,6 +18,7 @@ namespace mod_edpreset;
 
 use mod_edpreset\external\get_template_items;
 use mod_edpreset\external\set_favourite;
+use mod_edpreset\external\set_status;
 use mod_edpreset\local\coursedefault;
 use mod_edpreset\output\chooser_page;
 
@@ -29,6 +30,8 @@ use mod_edpreset\output\chooser_page;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \mod_edpreset\external\set_favourite
  * @covers     \mod_edpreset\external\get_template_items
+ * @covers     \mod_edpreset\external\set_status
+ * @covers     \mod_edpreset\local\review
  */
 final class external_test extends \advanced_testcase {
     /**
@@ -106,6 +109,102 @@ final class external_test extends \advanced_testcase {
 
         $this->expectException(\moodle_exception::class);
         set_favourite::execute(99999, true);
+    }
+
+    /**
+     * A course with a reviewer in it, and a preset ready for review.
+     *
+     * @return array{0: \stdClass, 1: \stdClass, 2: preset} The course, the reviewer, and the preset.
+     */
+    private function setup_review(): array {
+        global $DB;
+
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $plugingenerator->create_template_course([
+            1 => [['modname' => 'page', 'name' => 'Revised page', 'meta' => ['status' => meta::STATUS_REVIEW]]],
+        ]);
+        $plugingenerator->scan();
+
+        $course = $generator->create_course();
+        $reviewer = $generator->create_and_enrol($course, 'editingteacher');
+        assign_capability(
+            'mod/edpreset:reviewpresets',
+            CAP_ALLOW,
+            $DB->get_field('role', 'id', ['shortname' => 'editingteacher']),
+            \context_course::instance($course->id)
+        );
+        return [$course, $reviewer, preset::get_record(['title' => 'Revised page'])];
+    }
+
+    /**
+     * A reviewer can release a preset in review, or return it as a draft, and it takes effect at once.
+     *
+     * @param string $status The outcome.
+     * @dataProvider review_outcome_provider
+     */
+    public function test_set_status_decides_a_review(string $status): void {
+        $this->resetAfterTest();
+        [$course, $reviewer, $preset] = $this->setup_review();
+        $this->setUser($reviewer);
+
+        $result = set_status::execute((int)$preset->get('id'), (int)$course->id, $status);
+
+        $this->assertSame(['status' => $status], $result);
+        // Both the curator's details, which are the source of truth, and the preset itself.
+        $this->assertSame($status, meta::get_for_cm((int)$preset->get('templatecmid'))->get('status'));
+        $this->assertSame($status, preset::get_record(['id' => $preset->get('id')])->get('status'));
+    }
+
+    /**
+     * The two ways a review can end.
+     *
+     * @return array
+     */
+    public static function review_outcome_provider(): array {
+        return [
+            'released' => [meta::STATUS_RELEASED],
+            'returned as a draft' => [meta::STATUS_DRAFT],
+        ];
+    }
+
+    /**
+     * Only someone who can review presets in the course may decide a review.
+     */
+    public function test_set_status_needs_the_review_capability(): void {
+        $this->resetAfterTest();
+        [$course, , $preset] = $this->setup_review();
+        $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'teacher'));
+
+        $this->expectException(\required_capability_exception::class);
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_RELEASED);
+    }
+
+    /**
+     * Only a preset still in review can be decided on, so a stale page cannot withdraw a release.
+     */
+    public function test_set_status_refuses_a_preset_no_longer_in_review(): void {
+        $this->resetAfterTest();
+        [$course, $reviewer, $preset] = $this->setup_review();
+        $this->setUser($reviewer);
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_RELEASED);
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('notinreview', 'mod_edpreset'));
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_DRAFT);
+    }
+
+    /**
+     * A review ends in release or a draft, nothing else.
+     */
+    public function test_set_status_refuses_any_other_status(): void {
+        $this->resetAfterTest();
+        [$course, $reviewer, $preset] = $this->setup_review();
+        $this->setUser($reviewer);
+
+        $this->expectException(\moodle_exception::class);
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_ARCHIVED);
     }
 
     /**
