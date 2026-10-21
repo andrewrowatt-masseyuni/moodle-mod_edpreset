@@ -13,14 +13,18 @@ Feature: Offer each preset according to its release status
       | username  | firstname | lastname | email              |
       | teacher1  | Terry     | Teacher  | teacher1@test.com  |
       | reviewer1 | Rita      | Reviewer | reviewer1@test.com |
+      | tryer1    | Tina      | Tryer    | tryer1@test.com    |
     And the following "course enrolments" exist:
       | user      | course | role           |
       | teacher1  | C1     | editingteacher |
       | reviewer1 | C1     | editingteacher |
-    # Managers can review presets by default.
+      | tryer1    | C1     | editingteacher |
+    # Managers can review presets by default. Deciding a review needs that across the whole site;
+    # a manager in one course can only try the presets out there.
     And the following "role assigns" exist:
       | user      | role    | contextlevel | reference |
-      | reviewer1 | manager | Course       | C1        |
+      | reviewer1 | manager | System       |           |
+      | tryer1    | manager | Course       | C1        |
     And the following "activities" exist:
       | activity | course | section | name          | idnumber |
       | page     | TPL    | 1       | Released page | released |
@@ -52,6 +56,16 @@ Feature: Offer each preset according to its release status
     And I should see "For review" in the "Review page" "mod_edpreset > Preset"
     And I should not see "For review" in the "Released page" "mod_edpreset > Preset"
     And I should not see "Draft page"
+
+  Scenario: A reviewer in one course can try presets ready for review but not decide on them
+    Given I log in as "tryer1"
+    When I open the preset chooser for course "C1" section "1"
+    Then I should see "Presets ready for review"
+    And I should see "For review" in the "Review page" "mod_edpreset > Preset"
+    And "Release" "button" should not exist in the "Review page" "mod_edpreset > Preset"
+    And "Return as draft" "button" should not exist in the "Review page" "mod_edpreset > Preset"
+    And I click on "Add to course" "link" in the "Review page" "mod_edpreset > Preset"
+    And I should see "Review page" in the "#section-1 [data-for='cmlist']" "css_element"
 
   Scenario: A reviewer can add a preset that is ready for review
     Given I log in as "reviewer1"

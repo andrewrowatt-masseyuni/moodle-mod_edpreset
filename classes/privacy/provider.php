@@ -93,9 +93,9 @@ class provider implements core_userlist_provider, metadata_provider, plugin_prov
      * The contexts holding data for a user.
      *
      * Stars live in the user's own context. Curator authorship is held against the system context:
-     * presets are site configuration, administered from an admin page and stored in system-context
-     * file areas, and the exemplar's own module context can be gone while the row it produced is
-     * not - stale rows outlive their activity until the next reconcile.
+     * presets are site configuration, administered from an admin page, and the exemplar's own module
+     * context can be gone while the row it produced is not - stale rows outlive their activity until
+     * the next reconcile.
      *
      * @param int $userid The user id.
      * @return contextlist
@@ -163,7 +163,7 @@ class provider implements core_userlist_provider, metadata_provider, plugin_prov
 
         foreach ($contextlist->get_contexts() as $context) {
             if ($context instanceof \context_user && $context->instanceid == $userid) {
-                self::export_favourites($userid, $context);
+                self::export_favourites($context);
             } else if ($context instanceof \context_system) {
                 self::export_authorship($userid, $context);
             }
@@ -173,21 +173,41 @@ class provider implements core_userlist_provider, metadata_provider, plugin_prov
     /**
      * Export the presets a user has starred.
      *
-     * @param int $userid The user id.
-     * @param context $context The user's own context.
+     * Starts from the user's stars rather than from every preset on the site, and names them all
+     * with one query. Core still describes each star, so the export reads like any other component's.
+     *
+     * @param \context_user $context The user's own context.
      */
-    protected static function export_favourites(int $userid, context $context): void {
+    protected static function export_favourites(\context_user $context): void {
+        global $DB;
+
+        $favourites = \core_favourites\service_factory::get_service_for_user_context($context)
+            ->find_favourites_by_type(preset::FAVOURITE_COMPONENT, preset::FAVOURITE_ITEMTYPE);
+        if (!$favourites) {
+            return;
+        }
+
+        $titles = $DB->get_records_list(
+            preset::TABLE,
+            'id',
+            array_map(fn($favourite) => (int)$favourite->itemid, $favourites),
+            '',
+            'id, title'
+        );
+
         $starred = [];
-        foreach (preset::get_records() as $preset) {
+        foreach ($favourites as $favourite) {
             $info = \core_favourites\privacy\provider::get_favourites_info_for_user(
-                $userid,
+                (int)$context->instanceid,
                 $context,
                 preset::FAVOURITE_COMPONENT,
                 preset::FAVOURITE_ITEMTYPE,
-                (int)$preset->get('id')
+                (int)$favourite->itemid
             );
             if ($info) {
-                $starred[] = ['preset' => $preset->get('title')] + $info;
+                // A star outliving its preset should not happen - removing a preset removes its stars
+                // - but if one does, it is still this user's data and still exported.
+                $starred[] = ['preset' => $titles[$favourite->itemid]->title ?? null] + $info;
             }
         }
 

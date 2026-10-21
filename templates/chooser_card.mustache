@@ -82,15 +82,7 @@
             {{#inreview}}
                 <span class="edpreset-tag edpreset-review ms-2">{{#str}} chooser:inreview, mod_edpreset {{/str}}</span>
             {{/inreview}}
-            <div class="edpreset-card-tools d-flex align-items-center" style="align-self: start;"><!--
-                <button type="button"
-                        class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-zoom text-muted"
-                        data-action="preview"
-                        aria-label="{{#str}} chooser:expandsection, mod_edpreset, {{title}} {{/str}}"
-                        title="{{#str}} chooser:expandsection, mod_edpreset {{/str}}"
-                >
-                    <i class="icon fa fa-expand fa-fw" aria-hidden="true"></i>
-                </button>-->
+            <div class="edpreset-card-tools d-flex align-items-center align-self-start">
                 {{#starrable}}
                     <button type="button"
                             class="btn btn-icon icon-no-margin icon-size-3 m-0 edpreset-card-star {{#favourited}}text-primary{{/favourited}}{{^favourited}}text-muted{{/favourited}}"

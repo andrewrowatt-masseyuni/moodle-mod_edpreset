@@ -45,7 +45,9 @@ The plugin does nothing until it is enabled and pointed at a template course.
    be used for instructions to whoever curates the course.
 2. Go to **Site administration → Plugins → Activity modules → Activity preset provider**.
 3. Tick **Enable preset activities** and set **Template course ID** to the course from step 1. The
-   setting echoes back the resolved course name so the ID can be sanity-checked.
+   setting echoes back the resolved course name so the ID can be sanity-checked. Saving a new course
+   queues a rescan, which also removes the presets the previous template course left behind - along
+   with the stars teachers gave them.
 4. Review the remaining settings:
 
    | Setting | Default | Purpose |
@@ -62,13 +64,19 @@ The plugin does nothing until it is enabled and pointed at a template course.
 6. Give the people who will review presets before they are released the **Review preset
    activities** capability (`mod/edpreset:reviewpresets`) - see [Reviewing presets](#reviewing-presets).
    It carries the configuration risk flag: releasing a preset changes what every teacher on the site is
-   offered.
+   offered. Releasing one, or returning it as a draft, therefore needs the capability at system level,
+   through a role assigned there; granted only in a course, it lets the holder try presets out in that
+   course but not decide on them.
 
 Upgrading from a version before 0.8.0 leaves behind the hidden course earlier versions used for test
 restores (short name `edpreset_restore_test` unless it was changed). Nothing uses it any more, and it
 can be deleted. The upgrade also sets **Show in activity chooser** to Yes on the presets in section 1
 of the template course, which is what used to put a preset in the activity chooser, so teachers see
 no change.
+
+Upgrading to 0.8.1 rewrites any section template name that formatting used to change - one with an
+ampersand, usually - both on the presets and on the courses that recorded it as their template, since
+names are now stored as typed (see [Section templates](#section-templates)). It also queues a rescan.
 
 ## Usage
 
@@ -136,9 +144,12 @@ in a group of their own at the top of the page, **Presets ready for review**, wi
 > as expected, return here and click "Release", or "Return as draft" if further changes are
 > required.
 
-and nowhere else on the page as cards. Each card has a **For review** badge, no star, and two
-buttons underneath its own: **Release**, which offers the preset to every teacher, and **Return as
-draft**, which hands it back to its curator. Either saves the status at once - to the preset details
+and nowhere else on the page as cards. Each card has a **For review** badge, no star, and - for
+someone who holds the capability at system level - two buttons underneath its own: **Release**,
+which offers the preset to every teacher, and **Return as draft**, which hands it back to its curator.
+Someone who holds it only in the course sees the same group without the buttons, and a note saying
+that someone who reviews presets for the whole site decides: the decision changes what every teacher
+is offered, so a role in one course - or a manager's in one category - must not be enough for it. Either saves the status at once - to the preset details
 and the preset alike, as saving its settings form does - and reloads the page. Only a preset still in
 review can be decided on, so a page left open cannot withdraw a preset someone has since released.
 
@@ -381,7 +392,7 @@ Consequences of that shape, all of them load-bearing:
 | Table | Role |
 | --- | --- |
 | `edpreset_meta` | Curator input, entered on the exemplar's own settings form. **Source of truth**: an activity without a row here is not a preset. Holds the raw text as typed, with the format it was typed in. |
-| `edpreset_item` | Derived record, one per exemplar, rewritten wholesale by every rebuild. Holds cleaned HTML, chooser metadata, the release status copied from `edpreset_meta`, and why the last copy failed, if it did. |
+| `edpreset_item` | Derived record, one per exemplar, rewritten wholesale by every rebuild. Holds cleaned (but unfiltered) HTML, chooser metadata, the release status copied from `edpreset_meta`, and why the last copy failed, if it did. |
 | `edpreset` | Stub instance table (see above). Never written to. |
 
 `edpreset_item` rows are **upserted on `templatecmid`**, never deleted and reinserted, because user
@@ -410,17 +421,18 @@ member row by the scan — which is exactly what `category` already did with the
 
 | Column | Meaning |
 | --- | --- |
-| `templatename` | Section name with the marker stripped. **Non-empty is the flag** that a preset is a template member. |
+| `templatename` | Section name with the marker stripped, as typed and unformatted. **Non-empty is the flag** that a preset is a template member. It is also the name a course records once it has used the template, so it must not depend on filters or on who ran the scan. |
 | `templaterestricted` | Whether the marker carried an option, i.e. `[Template,restricted]`. |
-| `sectionsummary` | Cleaned HTML of the section summary, rendered once when the preset is scanned. Kept for **every** section, not only templates: a template card shows it as its description, an ordinary section's group shows it under the heading. (It was `templatesummary` while only templates used it.) |
+| `sectionsummary` | Cleaned, unfiltered HTML of the section summary, rendered when the preset is scanned and filtered when shown. Kept for **every** section, not only templates: a template card shows it as its description, an ordinary section's group shows it under the heading. (It was `templatesummary` while only templates used it.) |
 
 A template's identity in URLs and grouping is its `sectionnum`, not its name — two sections could
 strip to the same name.
 
 Marker detection runs against the **raw** `course_sections.name`. `get_section_name()` puts the name
 through `format_string()`, which a filter may rewrite, and falls back to "Topic 3" for an unnamed
-section; neither should decide whether a section is a template. The display title is
-`format_string()` of the *stripped* raw name, so the marker cannot survive inside filtered output.
+section; neither should decide whether a section is a template. The display title is the stripped
+raw name put through `format_string()` when it is shown, so the marker cannot survive inside filtered
+output.
 
 The section summary is cleaned with `noclean => false`, where core renders section summaries with
 `noclean => true` (`core_courseformat\output\local\content\section\summary::format_summary_text`).
@@ -459,6 +471,12 @@ to everyone, presets ready for review to holders of `mod/edpreset:reviewpresets`
 the reorder dialogue's web service all ask it, so a link to a preset that has since been withdrawn
 stops working.
 
+Anything acting on a preset id from a request looks it up with `preset::get_from_template_course()`,
+never by id alone, and `copy.php` and the reorder dialogue's web service ask `chooser::is_offered_in()`
+as the preset chooser page does. A copy backs its exemplar up as the administrator, so a row left by
+an earlier template course - which may since have become an ordinary course - must not be copyable by
+its id, and switching the plugin off must stop copies as well as hiding the presets.
+
 The activity chooser is the exception: `chooser::get_content_items()` and `get_all_content_items()`
 offer released presets only, so a preset ready for review is never there, for anyone. Reviewers find
 it in the preset chooser page's review group.
@@ -480,8 +498,17 @@ Three core callbacks extend other modules' settings forms inside the template co
 
 The description is the standard rich text editor. It is typed `PARAM_RAW` on the form (anything
 narrower strips the markup the curator just wrote) and is rendered and cleaned exactly once, when
-the preset is scanned, via `format_text(…, ['noclean' => false])` — the point at which the text
-crosses out of the template course and becomes readable by everyone who can add an activity.
+the preset is scanned, via `format_text(…, ['noclean' => false, 'filter' => false])` — the point at
+which the text crosses out of the template course and becomes readable by everyone who can add an
+activity.
+
+The filters are left for display time. A filter's output depends on who is looking - their language,
+for multilang - and the scan runs as whoever triggered it, so filtering then would store one person's
+view for everyone. `preset::get_formatted_description()` and its siblings run them for the viewer,
+with `noclean => true` since the cleaning has already happened. The names - preset title, section
+name, template name - are stored as typed for the same reason and put through `format_string()` when
+shown. They are formatted with `escape => false` wherever Mustache's `{{…}}` escapes them anyway:
+`format_string()` escapes an ampersand itself, so the default would show "Tips &amp; tricks".
 
 The release status is a select offering the four statuses, and defaults to **Draft** for an activity
 that has no preset details yet. The server-side validation refuses anything else, since a web
@@ -503,7 +530,9 @@ emptied again holds `<p></p>` or `<p><br></p>`, neither of which is an empty str
 `local\baker::rebuild()` walks the template course's `modinfo`, skips section 0, hidden and delegated
 sections, skips subsections and modules without backup support, and upserts a preset row for every
 activity that has curator details. Presets whose exemplar has gone are deleted, along with any
-core/plugin favourite rows pointing at them.
+core/plugin favourite rows pointing at them (through `core_favourites`, which deletes an item's stars
+across every user's context). So is every preset from a course that is no longer the template course,
+which is how a change of template course is cleaned up.
 
 That is all a scan does. Nothing is backed up until a teacher asks for a copy, so a scan only
 describes what is there, and is cheap: the manage page's **Rescan** runs it inside the request.
@@ -694,6 +723,8 @@ wherever its template could go (the restricted-template test above, applied to t
 `local\access::can_review()` decides whether presets ready for review are offered too (see
 [Chooser integration](#chooser-integration)). It checks `mod/edpreset:reviewpresets` in the target
 course's context, read once per page or request and passed to whatever filters presets.
+`local\access::can_decide_reviews()` decides whether a review's outcome can be recorded, and checks the
+same capability at system level: trying a preset out touches one course, releasing it the whole site.
 
 Both `copy.php` and `chooser.php` call `require_sesskey()`. The chooser links are minted server-side
 per user, so carrying a sesskey costs nothing and closes CSRF on what is otherwise a state-changing
@@ -733,9 +764,10 @@ page does carry a `sectionactivitycount`, but only so that adding to an empty se
 case, and the one where no dialogue is wanted — costs no round trip at all.
 
 `set_status` records a review's outcome (see [Reviewing presets](#reviewing-presets)) through
-`local\review::decide()`. It checks `mod/edpreset:reviewpresets` in the course the page is open for,
-as everything else about review does, and accepts only `released` or `draft`, only for a preset still
-in review. The page reloads once it succeeds rather than patching itself: a released preset moves to
+`local\review::decide()`. It requires `mod/edpreset:reviewpresets` at system level
+(`local\access::can_decide_reviews()`), not in the course the page is open for - that course is
+whichever one the caller names - and accepts only `released` or `draft`, only for a preset still in
+review in the template course. The page reloads once it succeeds rather than patching itself: a released preset moves to
 its category and may join Starred and the activity chooser, and a template's counts change, all of
 which the page already knows how to lay out. The script deliberately leaves its pending marker
 unresolved across that reload, so Behat waits for the new page rather than reading the old one.
@@ -826,7 +858,8 @@ message is the exception's, about the backup or restore, not about the teacher.
 
 The plugin ships PHPUnit coverage for the access rules, the copier, the scan, the observers, the
 release status, the progress reporter, the external functions, the form elements, the library
-functions, the privacy provider and the scrubber, plus a test data generator.
+functions, the preset persistent, both tasks, the privacy provider and the scrubber, plus a test data
+generator.
 
 The copier's tests copy for real - a genuine backup and restore - because that is the only thing
 that proves a copy works. `test_a_failed_restore_leaves_nothing_behind()` breaks a restore part way

@@ -63,6 +63,12 @@ require_sesskey();
 
 $coursecontext = context_course::instance($course->id);
 access::require_can_copy_into($course, $sectionnum);
+// The same check chooser.php makes before offering anything: the plugin switched on, a template course
+// configured, and this course not that one. Without it here, switching the plugin off would hide the
+// presets while a link to one still copied it.
+if (!chooser::is_offered_in($course)) {
+    throw new moodle_exception('invalidpreset', 'mod_edpreset');
+}
 $canreview = access::can_review($course);
 
 // Everything is loaded and checked before any of it is restored, so a bad id fails with nothing yet
@@ -94,8 +100,9 @@ if ($templatesection) {
     $usedtemplate = coursedefault::get((int)$course->id);
     foreach (access::clean_presets($presetids) as $presetid) {
         // The release status is checked here as well as in the choosers: a link to a preset the
-        // curator has since withdrawn, or one this user was never offered, must not still work.
-        $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
+        // curator has since withdrawn, or one this user was never offered, must not still work. So is
+        // the course it came from, since the copy backs its exemplar up as the administrator.
+        $preset = preset::get_from_template_course($presetid);
         if (!$preset || !$preset->is_offered($canreview)) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
@@ -112,10 +119,11 @@ if ($templatesection) {
 $beforemod = access::clean_beforemod($course, $beforemod);
 $order = access::clean_order($order);
 
+// Escaped: copy_progress prints the heading with $OUTPUT->heading(), which does not escape.
 if ($template) {
-    $heading = get_string('creatingtemplate', 'mod_edpreset', $template->get_name());
+    $heading = get_string('creatingtemplate', 'mod_edpreset', $template->get_formatted_name(true));
 } else if (count($presets) === 1) {
-    $heading = get_string('creatingactivity', 'mod_edpreset', $presets[0]->get('title'));
+    $heading = get_string('creatingactivity', 'mod_edpreset', $presets[0]->get_formatted_title(true));
 } else {
     $heading = get_string('creatingactivities', 'mod_edpreset', count($presets));
 }
@@ -187,7 +195,9 @@ if ($added) {
     \core\notification::success(get_string('activitiesadded', 'mod_edpreset', implode(', ', $names)));
 }
 if ($failed) {
-    \core\notification::error(get_string('activitiesnotadded', 'mod_edpreset', implode(', ', $failed)));
+    // Escaped like $names above: a notification's message is rendered as HTML.
+    $titles = array_map(fn(preset $preset) => $preset->get_formatted_title(true), $failed);
+    \core\notification::error(get_string('activitiesnotadded', 'mod_edpreset', implode(', ', $titles)));
 }
 
 $target = chooser::return_url($course, $sectionnum);

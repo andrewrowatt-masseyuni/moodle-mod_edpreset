@@ -43,11 +43,8 @@ class section_template {
     /** @var int Section number in the template course; the template's identity. */
     protected int $sectionnum;
 
-    /** @var string Section name with the marker stripped. */
+    /** @var string Section name with the marker stripped, unformatted. */
     protected string $name;
-
-    /** @var string Cleaned HTML of the section summary. */
-    protected string $summary;
 
     /** @var preset[] The member presets, in the order they appear in the template course. */
     protected array $members;
@@ -59,15 +56,13 @@ class section_template {
      * Constructor.
      *
      * @param int $sectionnum Section number in the template course.
-     * @param string $name Section name with the marker stripped.
-     * @param string $summary Cleaned HTML of the section summary.
+     * @param string $name Section name with the marker stripped, unformatted.
      * @param preset[] $members The member presets, in template order.
      * @param bool $restricted Whether the section's marker is [Template,restricted].
      */
-    public function __construct(int $sectionnum, string $name, string $summary, array $members, bool $restricted = false) {
+    public function __construct(int $sectionnum, string $name, array $members, bool $restricted = false) {
         $this->sectionnum = $sectionnum;
         $this->name = $name;
-        $this->summary = $summary;
         $this->members = $members;
         $this->restricted = $restricted;
     }
@@ -82,12 +77,26 @@ class section_template {
     }
 
     /**
-     * The name teachers see, with the marker already stripped.
+     * The section name with the marker stripped, as the curator typed it.
+     *
+     * This is what a course records once it has used the template, and what that record is
+     * compared against (see coursedefault), so it is never formatted: the same template must not
+     * read differently to different people. Show get_formatted_name() instead.
      *
      * @return string
      */
     public function get_name(): string {
         return $this->name;
+    }
+
+    /**
+     * The name teachers see.
+     *
+     * @param bool $escape As for preset::get_formatted_title().
+     * @return string
+     */
+    public function get_formatted_name(bool $escape = false): string {
+        return $this->get_first_member()->get_formatted_templatename($escape);
     }
 
     /**
@@ -102,12 +111,14 @@ class section_template {
     }
 
     /**
-     * The card's description: cleaned HTML of the section summary.
+     * The card's description: the section summary, ready to show.
      *
-     * @return string
+     * Taken from the first member like the icon, since every member carries the same copy.
+     *
+     * @return string HTML, or '' when the section has no summary.
      */
-    public function get_summary(): string {
-        return $this->summary;
+    public function get_formatted_summary(): string {
+        return $this->get_first_member()->get_formatted_sectionsummary();
     }
 
     /**
@@ -354,8 +365,8 @@ class section_template {
     /**
      * Build a template from its members.
      *
-     * The name, summary and restriction are taken from the first member: every member of a section
-     * carries the same denormalised copy, so any of them would do.
+     * The name and restriction are taken from the first member, as the summary and icon are later:
+     * every member of a section carries the same denormalised copy, so any of them would do.
      *
      * @param int $sectionnum Section number in the template course.
      * @param preset[] $members The member presets, in template order.
@@ -367,7 +378,6 @@ class section_template {
         return new self(
             $sectionnum,
             (string)$first->get('templatename'),
-            (string)$first->get('sectionsummary'),
             array_values($members),
             (bool)$first->get('templaterestricted')
         );

@@ -114,6 +114,9 @@ final class external_test extends \advanced_testcase {
     /**
      * A course with a reviewer in it, and a preset ready for review.
      *
+     * The reviewer holds the capability across the site, as deciding a review needs: they are a
+     * manager at system level, which is where the capability's archetype puts it.
+     *
      * @return array{0: \stdClass, 1: \stdClass, 2: preset} The course, the reviewer, and the preset.
      */
     private function setup_review(): array {
@@ -129,11 +132,10 @@ final class external_test extends \advanced_testcase {
 
         $course = $generator->create_course();
         $reviewer = $generator->create_and_enrol($course, 'editingteacher');
-        assign_capability(
-            'mod/edpreset:reviewpresets',
-            CAP_ALLOW,
-            $DB->get_field('role', 'id', ['shortname' => 'editingteacher']),
-            \context_course::instance($course->id)
+        role_assign(
+            $DB->get_field('role', 'id', ['shortname' => 'manager']),
+            $reviewer->id,
+            \context_system::instance()
         );
         return [$course, $reviewer, preset::get_record(['title' => 'Revised page'])];
     }
@@ -170,7 +172,7 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
-     * Only someone who can review presets in the course may decide a review.
+     * Only someone who can review presets may decide a review.
      */
     public function test_set_status_needs_the_review_capability(): void {
         $this->resetAfterTest();
@@ -178,6 +180,45 @@ final class external_test extends \advanced_testcase {
         $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'teacher'));
 
         $this->expectException(\required_capability_exception::class);
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_RELEASED);
+    }
+
+    /**
+     * Holding the capability in one course is not enough to decide a review.
+     *
+     * The outcome changes what every teacher on the site is offered, and the course is whichever
+     * one the caller names - so a course-level grant would otherwise be a site-wide one.
+     */
+    public function test_set_status_needs_the_capability_across_the_site(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [$course, , $preset] = $this->setup_review();
+
+        $coursereviewer = $this->getDataGenerator()->create_and_enrol($course, 'editingteacher');
+        assign_capability(
+            'mod/edpreset:reviewpresets',
+            CAP_ALLOW,
+            $DB->get_field('role', 'id', ['shortname' => 'editingteacher']),
+            \context_course::instance($course->id)
+        );
+        $this->setUser($coursereviewer);
+        $this->assertTrue(\mod_edpreset\local\access::can_review($course));
+
+        $this->expectException(\required_capability_exception::class);
+        set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_RELEASED);
+    }
+
+    /**
+     * A preset left behind by a previous template course cannot be decided on.
+     */
+    public function test_set_status_refuses_a_preset_from_another_course(): void {
+        $this->resetAfterTest();
+        [$course, $reviewer, $preset] = $this->setup_review();
+        set_config('templatecourseid', $this->getDataGenerator()->create_course()->id, 'mod_edpreset');
+        $this->setUser($reviewer);
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('invalidpreset', 'mod_edpreset'));
         set_status::execute((int)$preset->get('id'), (int)$course->id, meta::STATUS_RELEASED);
     }
 
@@ -259,5 +300,54 @@ final class external_test extends \advanced_testcase {
         $this->expectException(\moodle_exception::class);
         $this->expectExceptionMessage(get_string('templaterestricted', 'mod_edpreset'));
         get_template_items::execute((int)$fresh->id, 1, 3);
+    }
+
+    /**
+     * The dialogue's names arrive formatted but unescaped, because its template escapes them.
+     */
+    public function test_get_template_items_names_are_not_escaped_twice(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Weekly cycle',
+            'title' => 'Q&A forum',
+        ]);
+
+        $course = $generator->create_course(['numsections' => 2]);
+        $generator->create_module('page', ['course' => $course->id, 'section' => 1, 'name' => 'Tips & tricks']);
+        $this->setUser($generator->create_and_enrol($course, 'editingteacher'));
+
+        $result = get_template_items::execute((int)$course->id, 1, 3);
+        $this->assertSame(['Q&A forum'], array_column($result['templateitems'], 'name'));
+        $this->assertSame(['Tips & tricks'], array_column($result['courseitems'], 'name'));
+    }
+
+    /**
+     * Switching the plugin off closes the dialogue's web service as well as hiding the page.
+     */
+    public function test_get_template_items_refuses_when_the_plugin_is_off(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Weekly cycle',
+        ]);
+        set_config('enabled', 0, 'mod_edpreset');
+
+        $course = $generator->create_course(['numsections' => 2]);
+        $this->setUser($generator->create_and_enrol($course, 'editingteacher'));
+
+        $this->expectException(\moodle_exception::class);
+        $this->expectExceptionMessage(get_string('invalidpreset', 'mod_edpreset'));
+        get_template_items::execute((int)$course->id, 1, 3);
     }
 }

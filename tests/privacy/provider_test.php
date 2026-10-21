@@ -99,6 +99,35 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
     }
 
     /**
+     * A user's stars are exported from their own context, named after the presets they mark.
+     */
+    public function test_export_favourites(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $starred = $plugingenerator->create_preset(['title' => 'Starred preset']);
+        $plugingenerator->create_preset(['title' => 'Unstarred preset']);
+
+        $user = $generator->create_user();
+        $this->setUser($user);
+        \mod_edpreset\external\set_favourite::execute((int)$starred->get('id'), true);
+        // Someone else's star on the same preset is theirs, not this user's.
+        $this->setUser($generator->create_user());
+        \mod_edpreset\external\set_favourite::execute((int)$starred->get('id'), true);
+
+        $context = \context_user::instance($user->id);
+        $this->assertEquals([$context->id], provider::get_contexts_for_userid((int)$user->id)->get_contextids());
+
+        $this->export_context_data_for_user((int)$user->id, $context, 'mod_edpreset');
+        $data = writer::with_context($context)->get_data([get_string('privacy:path:favourites', 'mod_edpreset')]);
+
+        $this->assertCount(1, $data->presets);
+        $this->assertSame('Starred preset', $data->presets[0]['preset']);
+        $this->assertSame(\core_privacy\local\request\transform::yesno(true), $data->presets[0]['starred']);
+    }
+
+    /**
      * A user with no stamp anywhere is not put in the system context.
      */
     public function test_get_contexts_for_userid_without_authorship(): void {

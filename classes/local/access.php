@@ -121,6 +121,21 @@ class access {
     }
 
     /**
+     * Whether the current user may release presets ready for review, or return them as drafts.
+     *
+     * Asked at system level, unlike can_review(). Seeing and trying out a preset in review touches
+     * only the course it is tried in, so a role in that course is enough for it; deciding the review
+     * changes what every teacher on the site is offered, so it needs the capability across the site.
+     * Without this, a course-level grant - or a manager's role in one category - would be a site-wide
+     * one in all but name.
+     *
+     * @return bool
+     */
+    public static function can_decide_reviews(): bool {
+        return has_capability('mod/edpreset:reviewpresets', \context_system::instance());
+    }
+
+    /**
      * Whether a preset may be added to a course by itself, rather than as part of a whole template.
      *
      * Any preset may, except a section template's activities. Those may be added one at a time to a

@@ -199,13 +199,23 @@ editor relies on that (`maxfiles => 0`). Keep it that way.
   `get_course_content_items` callback that core is migrating to the hook API. Do not widen it
   without verifying that callback still exists and is still dispatched.
 * Curator rich text fields are `PARAM_RAW` on the form and are rendered and cleaned **exactly once**,
-  when the preset is scanned, with `format_text(…, ['noclean' => false])`. Persistent properties
-  holding that already-cleaned HTML (`description`, `sectionsummary`) are `PARAM_RAW` and must never
-  be re-cleaned or escaped downstream.
+  when the preset is scanned, with `format_text(…, ['noclean' => false, 'filter' => false])`.
+  Persistent properties holding that already-cleaned HTML (`description`, `sectionsummary`, `help`)
+  are `PARAM_RAW` and must never be re-cleaned or escaped downstream. **Filters run at display time**,
+  for the viewer: show curator text through `preset::get_formatted_*()` and
+  `section_template::get_formatted_*()`, never the raw `get()`. Names (`title`, `category`,
+  `templatename`) are stored as typed; `templatename` is also a template's identity, recorded against
+  courses by `coursedefault`, so compare with `get_name()` and display with `get_formatted_name()`.
+  Format with `escape => false` for anything Mustache's `{{…}}` will escape, `true` for raw HTML output.
+* Look a preset up from a request id with `preset::get_from_template_course()`, never by id alone:
+  stale rows from a previous template course exist until the next rescan, and a copy backs up as admin.
 * Every form element added by `mod_edpreset_coursemodule_standard_elements()` must keep its
   `edpreset_` prefix — HTML_QuickForm silently drops an element clashing with the `name`/`intro`/
   `tags` that `standard_coursemodule_elements()` already added.
 * `chooser.php` and `copy.php` both `require_sesskey()`; links are minted server-side per user.
+* `mod/edpreset:reviewpresets` is checked in the course for seeing and adding presets in review
+  (`access::can_review()`), but at system level for releasing them or returning them as drafts
+  (`access::can_decide_reviews()`), since that changes what the whole site is offered.
 * Observers must stay cheap and non-throwing (they fire on activity edits site-wide) and are declared
   `internal => false` so adhoc tasks are queued after the transaction commits. `course_module_created`
   also recognises core's Duplicate and gives the copy a draft copy of the preset details.

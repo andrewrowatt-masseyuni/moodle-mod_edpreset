@@ -76,6 +76,8 @@ final class section_action_test extends \advanced_testcase {
         $this->assertCount(1, $items);
         $item = reset($items);
         $this->assertSame(get_string('section:applytemplate', 'mod_edpreset'), $item->title);
+        // A raw attribute string, as theme_snap prints it - so the label inside it is escaped.
+        $this->assertSame("aria-label='" . s(get_string('section:applytemplate', 'mod_edpreset')) . "'", $item->arialabel);
         $this->assertTrue($item->isinmenu);
         $this->assertSame('edpreset-applytemplate', $item->class);
         // The section id resolves the course and the section number, and selects the

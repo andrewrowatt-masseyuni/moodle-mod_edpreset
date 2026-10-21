@@ -413,7 +413,7 @@ final class activity_copier_test extends \advanced_testcase {
         $result = activity_copier::copy_many($presets, $course, 1);
 
         $this->assertDebuggingCalledCount(1);
-        $this->assertSame(['Exemplar 2'], $result['failed']);
+        $this->assertSame(['Exemplar 2'], array_map(fn(preset $preset) => $preset->get('title'), $result['failed']));
         $this->assertSame(
             ['Exemplar 1', 'Exemplar 3'],
             array_map(fn($cm) => $cm->name, $result['added'])

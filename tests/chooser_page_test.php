@@ -258,8 +258,9 @@ final class chooser_page_test extends \advanced_testcase {
      * Each user sees the presets and template members the release status offers them.
      *
      * A teacher sees only released ones. Someone who can review presets also sees those ready for
-     * review, in a group of their own with the buttons that release them or return them as drafts.
-     * Nobody sees a draft - including as a member of a template that is otherwise released.
+     * review, in a group of their own - with the buttons that release them or return them as drafts
+     * only if they can review presets across the site. Nobody sees a draft - including as a member of
+     * a template that is otherwise released.
      */
     public function test_release_status_decides_what_each_user_sees(): void {
         global $DB;
@@ -308,8 +309,10 @@ final class chooser_page_test extends \advanced_testcase {
             [$reviewgroup, 'Test category', get_string('chooser:sectiontemplates', 'mod_edpreset')],
             array_keys($groups)
         );
+        // Holding the capability in this course alone is enough to try the presets out, but not to
+        // decide on them: that changes what the whole site is offered.
         $this->assertSame(
-            '<p>' . get_string('chooser:reviewhelp', 'mod_edpreset') . '</p>',
+            '<p>' . get_string('chooser:reviewhelptryonly', 'mod_edpreset') . '</p>',
             $groups[$reviewgroup]->summary
         );
         $this->assertSame(['Released page'], array_column($groups['Test category']->cards, 'title'));
@@ -318,10 +321,25 @@ final class chooser_page_test extends \advanced_testcase {
         $this->assertSame(['Review page', 'Review member', 'Released page', 'Induction'], array_keys($cards));
         foreach (['Review page', 'Review member'] as $title) {
             $this->assertTrue($cards[$title]->inreview);
-            $this->assertTrue($cards[$title]->reviewable, "$title should have the review buttons");
+            $this->assertFalse($cards[$title]->reviewable, "$title should have no review buttons for a course reviewer");
             $this->assertFalse($cards[$title]->starrable, "$title should have no star");
         }
         $this->assertFalse($cards['Released page']->reviewable);
+
+        // Someone who reviews presets for the whole site gets the buttons.
+        $sitereviewer = $this->getDataGenerator()->create_and_enrol($course, 'teacher');
+        role_assign($DB->get_field('role', 'id', ['shortname' => 'manager']), $sitereviewer->id, \context_system::instance());
+        $this->setUser($sitereviewer);
+        $sitedata = $this->export(false, $course);
+        $this->assertSame(
+            '<p>' . get_string('chooser:reviewhelp', 'mod_edpreset') . '</p>',
+            $this->groups_by_name($sitedata)[$reviewgroup]->summary
+        );
+        $sitecards = $this->cards_by_title($sitedata);
+        foreach (['Review page', 'Review member'] as $title) {
+            $this->assertTrue($sitecards[$title]->reviewable, "$title should have the review buttons");
+        }
+        $this->assertFalse($sitecards['Released page']->reviewable);
 
         // A template's activity in review can be added on its own, like any other card here.
         $this->assertStringContainsString('presets=' . $cards['Review member']->presetid, $cards['Review member']->addurl);
@@ -503,5 +521,34 @@ final class chooser_page_test extends \advanced_testcase {
             '<p>' . get_string('chooser:starredhelp', 'mod_edpreset') . '</p>',
             $starredgroup->summary
         );
+    }
+
+    /**
+     * Names reach the template formatted but not escaped, because its {{name}} and {{title}} escape
+     * them - and escaping twice is what put "Tips &amp;amp; tricks" in front of teachers.
+     */
+    public function test_names_are_escaped_only_once(): void {
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+        $templatecourse = $plugingenerator->create_template_course();
+
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'title' => 'Q&A forum',
+            'category' => 'Tips & tricks',
+        ]);
+        $plugingenerator->create_preset([
+            'templatecourseid' => $templatecourse->id,
+            'sectionnum' => 3,
+            'templatename' => 'Plan & review',
+            'title' => 'Member',
+        ]);
+        $this->setAdminUser();
+
+        $data = $this->export();
+        $this->assertArrayHasKey('Tips & tricks', $this->groups_by_name($data));
+        $cards = $this->cards_by_title($data);
+        $this->assertArrayHasKey('Q&A forum', $cards);
+        $this->assertArrayHasKey('Plan & review', $cards);
     }
 }

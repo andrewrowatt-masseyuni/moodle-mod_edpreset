@@ -282,10 +282,12 @@ class chooser {
         return new content_item(
             (int)$preset->get('id'),
             self::item_name($preset),
-            new string_title($preset->get('title')),
+            // Formatted here, per request, so the filters run for this user. Not escaped: core's
+            // chooser templates escape the title, and would escape it twice.
+            new string_title($preset->get_formatted_title()),
             self::item_link($preset, $course),
             self::item_icon($preset),
-            (string)$preset->get('help'),
+            $preset->get_formatted_help(),
             (int)$preset->get('archetype'),
             'mod_edpreset',
             $preset->get('purpose'),

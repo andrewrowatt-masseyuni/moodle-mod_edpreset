@@ -374,9 +374,9 @@ class activity_copier {
      * @param int $sectionnum The section number to place the activities in.
      * @param int $beforemod Course module id to insert before, or 0 to append.
      * @param progress_base|null $progress Optional progress reporter, shared by every copy.
-     * @return array{added: cm_info[], failed: string[], placed: array<int, int>}
-     *               The new course modules, the titles of the presets that could not be copied, and
-     *               the course module each preset that succeeded became, keyed by preset id.
+     * @return array{added: cm_info[], failed: preset[], placed: array<int, int>}
+     *               The new course modules, the presets that could not be copied, and the course
+     *               module each preset that succeeded became, keyed by preset id.
      */
     public static function copy_many(
         array $presets,
@@ -399,7 +399,7 @@ class activity_copier {
                 // The teacher is told which preset failed, but not why - the reasons are backup and
                 // restore internals. Keep the real one where an administrator will see it: against
                 // the preset, for the manage page, and in the debugging output.
-                $failed[] = $preset->get('title');
+                $failed[] = $preset;
                 $preset->record_copy_error(get_class($e) . ': ' . $e->getMessage());
                 debugging(
                     'mod_edpreset: could not copy preset ' . $preset->get('id') . ': ' . $e->getMessage(),
@@ -421,7 +421,7 @@ class activity_copier {
      *                        leave the section in whatever order the copy produced.
      * @param int $beforemod Course module id to insert before, or 0 to append.
      * @param progress_base|null $progress Optional progress reporter.
-     * @return array{added: cm_info[], failed: string[]}
+     * @return array{added: cm_info[], failed: preset[]}
      */
     public static function copy_template(
         section_template $template,

@@ -392,18 +392,20 @@ final class baker_test extends \advanced_testcase {
         $preset = preset::get_record(['title' => 'Reflective journal']);
         $presetid = (int)$preset->get('id');
 
-        // Star it in both places a star can live: the standard chooser's, in system context, and
-        // the preset chooser page's, in the user's own context.
+        // Star it in every place a star can live: the standard chooser's and the "Recommend
+        // activities" page's, in system context, and the preset chooser page's, in the user's own.
         $admin = get_admin();
-        $DB->insert_record('favourite', (object)[
-            'component' => 'core_course',
-            'itemtype' => 'contentitem_mod_edpreset',
-            'itemid' => $presetid,
-            'contextid' => \context_system::instance()->id,
-            'userid' => $admin->id,
-            'timecreated' => time(),
-            'timemodified' => time(),
-        ]);
+        foreach (['contentitem_mod_edpreset', 'recommend_mod_edpreset'] as $itemtype) {
+            $DB->insert_record('favourite', (object)[
+                'component' => 'core_course',
+                'itemtype' => $itemtype,
+                'itemid' => $presetid,
+                'contextid' => \context_system::instance()->id,
+                'userid' => $admin->id,
+                'timecreated' => time(),
+                'timemodified' => time(),
+            ]);
+        }
         \core_favourites\service_factory::get_service_for_user_context(\context_user::instance($admin->id))
             ->create_favourite(
                 preset::FAVOURITE_COMPONENT,
@@ -421,6 +423,11 @@ final class baker_test extends \advanced_testcase {
         $this->assertFalse($DB->record_exists('favourite', [
             'component' => 'core_course',
             'itemtype' => 'contentitem_mod_edpreset',
+            'itemid' => $presetid,
+        ]));
+        $this->assertFalse($DB->record_exists('favourite', [
+            'component' => 'core_course',
+            'itemtype' => 'recommend_mod_edpreset',
             'itemid' => $presetid,
         ]));
         $this->assertFalse($DB->record_exists('favourite', [
@@ -655,6 +662,108 @@ final class baker_test extends \advanced_testcase {
         });
 
         $this->assertFalse(meta::exists_for_cm((int)$created->cmid));
+    }
+
+    /**
+     * Pointing the plugin at a new template course sweeps away the presets the old one left.
+     *
+     * Nothing offers or copies them by then, but they would otherwise keep their stars and sit on
+     * the manage page for good.
+     */
+    public function test_rebuild_sweeps_a_previous_template_course(): void {
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+
+        $old = $this->make_template_course();
+        baker::rebuild();
+        $stale = preset::get_record(['title' => 'Reflective journal']);
+
+        $new = $plugingenerator->create_template_course([1 => [['modname' => 'page', 'name' => 'New page']]]);
+        $result = baker::rebuild();
+
+        $this->assertSame(['scanned' => 1, 'removed' => 3], $result);
+        $this->assertSame(0, preset::count_records(['templatecourseid' => $old->id]));
+        $this->assertSame(['New page'], array_map(fn($p) => $p->get('title'), preset::get_records()));
+        $this->assertNull(preset::get_from_template_course((int)$stale->get('id')));
+    }
+
+    /**
+     * Names are stored as typed and formatted only when shown, so a mustache {{variable}} escapes
+     * them once rather than twice.
+     *
+     * format_string() escapes an ampersand, and Mustache escapes whatever it is given again. A name
+     * formatted at scan time with the default escaping turned "Tips & tricks" into "Tips &amp;amp;
+     * tricks" in the page, which is what teachers saw.
+     */
+    public function test_names_are_stored_as_typed_and_formatted_when_shown(): void {
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+
+        $plugingenerator->create_template_course([
+            1 => ['name' => 'Tips & tricks', 'activities' => [['modname' => 'page', 'name' => 'Q&A page']]],
+            2 => ['name' => 'Q&A [Template]', 'activities' => [['modname' => 'page', 'name' => 'Member']]],
+        ]);
+        baker::rebuild();
+
+        $page = preset::get_record(['title' => 'Q&A page']);
+        $this->assertSame('Tips & tricks', $page->get('category'));
+        $this->assertSame('Tips & tricks', $page->get_formatted_category());
+        $this->assertSame('Tips &amp; tricks', $page->get_formatted_category(true));
+        $this->assertSame('Q&A page', $page->get_formatted_title());
+        $this->assertSame('Q&amp;A page', $page->get_formatted_title(true));
+
+        $member = preset::get_record(['title' => 'Member']);
+        $this->assertSame('Q&A', $member->get('templatename'));
+        $this->assertSame('Q&A', $member->get_formatted_templatename());
+    }
+
+    /**
+     * Filters run for whoever is looking, not once for whoever ran the scan.
+     *
+     * The scan runs as the administrator who pressed Rescan, or as cron, so anything filtered then
+     * would show every teacher that one person's view - multilang in their language, for one.
+     */
+    public function test_filters_run_when_shown_rather_than_when_scanned(): void {
+        $this->resetAfterTest();
+        $plugingenerator = $this->getDataGenerator()->get_plugin_generator('mod_edpreset');
+
+        filter_set_global_state('multilang', TEXTFILTER_ON);
+        // Both of these are needed before format_string() filters at all - the filter applied to
+        // headings as well as content, and string filtering switched on - where format_text() needs
+        // neither.
+        filter_set_applies_to_strings('multilang', true);
+        set_config('filterall', 1);
+        \filter_manager::reset_caches();
+
+        $multilang = '<span lang="en" class="multilang">English</span><span lang="fr" class="multilang">Français</span>';
+        $plugingenerator->create_template_course([
+            1 => [
+                'name' => $multilang,
+                'summary' => "<p>$multilang summary</p>",
+                'activities' => [[
+                    'modname' => 'page',
+                    // Not the name: the multilang markup alone is longer than a preset name may be.
+                    'meta' => ['presetname' => 'Multilang page', 'description' => "<p>$multilang description</p>"],
+                ]],
+            ],
+        ]);
+        baker::rebuild();
+
+        $preset = preset::get_record(['category' => $multilang]);
+        foreach (['description', 'sectionsummary', 'help'] as $field) {
+            $this->assertStringContainsString('Français', $preset->get($field), "$field should be stored unfiltered");
+        }
+
+        $shown = [
+            $preset->get_formatted_category(),
+            $preset->get_formatted_description(),
+            $preset->get_formatted_sectionsummary(),
+            $preset->get_formatted_help(),
+        ];
+        foreach ($shown as $text) {
+            $this->assertStringContainsString('English', $text);
+            $this->assertStringNotContainsString('Français', $text);
+        }
     }
 
     /**

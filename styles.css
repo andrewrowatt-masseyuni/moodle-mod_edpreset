@@ -330,19 +330,10 @@
     font-weight: 400;
 }
 
-/* Top-right controls: zoom then star, kept close together. */
+/* Top-right controls, kept close together. */
 .edpreset-chooser .edpreset-card-tools {
     gap: 0.35rem;
     flex-shrink: 0;
-}
-
-.edpreset-chooser .edpreset-card-zoom {
-    color: #8a94a3;
-}
-
-.edpreset-chooser .edpreset-card-zoom:hover,
-.edpreset-chooser .edpreset-card-zoom:focus {
-    color: var(--edpreset-accent);
 }
 
 .edpreset-chooser .edpreset-card-star.text-primary {
@@ -631,7 +622,7 @@
 }
 
 /*
- * Both pills reuse the tag pill's shape - same padding, radius and weight - so they read as the same
+ * The pill reuses the tag pill's shape - same padding, radius and weight - so it reads as the same
  * family. Only the tint differs, and it matches the item wash behind it.
  */
 .edpreset-pill {
@@ -643,12 +634,6 @@
     border-color: rgba(0, 75, 141, 0.35);
     background-color: rgba(0, 75, 141, 0.12);
     color: #004b8d;
-}
-
-.edpreset-pill-existing {
-    border-color: rgba(125, 125, 125, 0.35);
-    background-color: rgba(125, 125, 125, 0.12);
-    color: inherit;
 }
 
 /* While an item is being dragged, core/sortable_list clones it into a floating proxy. */

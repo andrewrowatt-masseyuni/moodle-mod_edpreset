@@ -17,6 +17,7 @@
 namespace mod_edpreset\external;
 
 use context_course;
+use context_system;
 use core_external\external_api;
 use core_external\external_function_parameters;
 use core_external\external_single_structure;
@@ -28,8 +29,10 @@ use moodle_exception;
 /**
  * Release a preset that is ready for review, or return it to its curator as a draft.
  *
- * Asked of the course the preset chooser page is open for, because that is where the capability to
- * review presets is checked everywhere else: a reviewer is someone who holds it there.
+ * The capability is required at system level rather than in the course the page is open for: the
+ * outcome changes what every teacher on the site is offered, and the course is whichever one the
+ * caller names. See access::can_decide_reviews(). The course is still taken, and validated, because
+ * that is where the page making the call lives.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -67,11 +70,10 @@ class set_status extends external_api {
             ['presetid' => $presetid, 'courseid' => $courseid, 'status' => $status]
         );
 
-        $context = context_course::instance($courseid);
-        self::validate_context($context);
-        require_capability('mod/edpreset:reviewpresets', $context);
+        self::validate_context(context_course::instance($courseid));
+        require_capability('mod/edpreset:reviewpresets', context_system::instance());
 
-        $preset = preset::get_record(['id' => $presetid, 'enabled' => 1]);
+        $preset = preset::get_from_template_course($presetid);
         if (!$preset) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }

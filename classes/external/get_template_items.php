@@ -22,6 +22,7 @@ use core_external\external_multiple_structure;
 use core_external\external_single_structure;
 use core_external\external_value;
 use mod_edpreset\local\access;
+use mod_edpreset\local\chooser;
 use mod_edpreset\local\section_template;
 use moodle_exception;
 
@@ -75,6 +76,9 @@ class get_template_items extends external_api {
         // The same gate the page and copy.php apply, so the dialogue cannot show a teacher a section
         // they would not have been allowed to add to anyway.
         access::require_can_copy_into($course, $sectionnum);
+        if (!chooser::is_offered_in($course)) {
+            throw new moodle_exception('invalidpreset', 'mod_edpreset');
+        }
 
         $sectiontemplate = section_template::for_section($template, access::can_review($course));
         if (!$sectiontemplate) {
@@ -85,7 +89,7 @@ class get_template_items extends external_api {
         access::require_can_use_template($course, $sectiontemplate);
 
         return [
-            'templateitems' => self::export_template_items($sectiontemplate),
+            'templateitems' => self::export_template_items($sectiontemplate, \context_course::instance($course->id)),
             'courseitems' => self::export_course_items($course, $sectionnum),
         ];
     }
@@ -96,17 +100,24 @@ class get_template_items extends external_api {
      * Named as they will be once copied - the preset's default name where the curator set one -
      * rather than as the exemplar happens to be called, so that the dialogue matches the result.
      *
+     * Every name goes out formatted but not escaped: the dialogue renders them with {{name}}, which
+     * escapes them itself.
+     *
      * @param section_template $template The template.
+     * @param \context $context The target course's context, which a default name will be shown in.
      * @return array[]
      */
-    protected static function export_template_items(section_template $template): array {
+    protected static function export_template_items(section_template $template, \context $context): array {
         $items = [];
         foreach ($template->get_members() as $member) {
             $defaultname = trim((string)$member->get('defaultname'));
+            $name = $defaultname !== ''
+                ? format_string($defaultname, true, ['context' => $context, 'escape' => false])
+                : $member->get_formatted_title();
 
             $items[] = [
                 'token' => 'p' . $member->get('id'),
-                'name' => $defaultname !== '' ? $defaultname : $member->get('title'),
+                'name' => $name,
                 'modfullname' => get_string('modulename', 'mod_' . $member->get('modname')),
                 'icon' => $member->get_icon_html(),
                 // The icon container needs all three or the icon renders without its colour.
@@ -116,7 +127,7 @@ class get_template_items extends external_api {
                 'istemplate' => true,
                 // Unused - a template activity has no drag handle - but kept so both lists have the
                 // same shape.
-                'movetitle' => get_string('reorder:move', 'mod_edpreset', $member->get('title')),
+                'movetitle' => get_string('reorder:move', 'mod_edpreset', $name),
             ];
         }
 
@@ -141,7 +152,8 @@ class get_template_items extends external_api {
                 continue;
             }
 
-            $name = format_string($cm->name, true, ['context' => $context]);
+            // Not escaped, as for the template's own activities: see export_template_items().
+            $name = format_string($cm->name, true, ['context' => $context, 'escape' => false]);
 
             $items[] = [
                 'token' => 'c' . $cm->id,

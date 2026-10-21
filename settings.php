@@ -41,13 +41,17 @@ if ($ADMIN->fulltree) {
         0
     ));
 
-    $settings->add(new \mod_edpreset\admin\setting_templatecourse(
+    $templatecourse = new \mod_edpreset\admin\setting_templatecourse(
         'mod_edpreset/templatecourseid',
         get_string('settings:templatecourseid', 'mod_edpreset'),
         get_string('settings:templatecourseid_desc', 'mod_edpreset'),
         '',
         PARAM_INT
-    ));
+    );
+    // A new template course has no presets until it is scanned, and the scan is also what sweeps away
+    // those the previous one left behind - so one is queued rather than left to the nightly reconcile.
+    $templatecourse->set_updatedcallback([\mod_edpreset\local\baker::class, 'queue_rebuild']);
+    $settings->add($templatecourse);
 
     $settings->add(new admin_setting_configtext(
         'mod_edpreset/maxpresets',

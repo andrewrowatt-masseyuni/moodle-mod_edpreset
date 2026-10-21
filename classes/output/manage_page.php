@@ -51,7 +51,11 @@ class manage_page implements renderable, templatable {
         $data->sesskey = sesskey();
 
         if ($templatecourse) {
-            $data->templatecoursename = format_string($templatecourse->fullname);
+            $data->templatecoursename = format_string(
+                $templatecourse->fullname,
+                true,
+                ['context' => \context_course::instance($templatecourse->id), 'escape' => false]
+            );
             $data->templatecourseurl =
                 (new moodle_url('/course/view.php', ['id' => $templatecourse->id]))->out(false);
         }
@@ -78,10 +82,11 @@ class manage_page implements renderable, templatable {
         foreach (preset::get_records([], 'sortorder', 'ASC') as $preset) {
             $row = new stdClass();
             $row->id = (int)$preset->get('id');
-            $row->title = $preset->get('title');
+            // Not escaped: the template's {{title}} and {{category}} do that.
+            $row->title = $preset->get_formatted_title();
             $row->modname = $preset->get('modname');
             $row->modulename = get_string('modulename', 'mod_' . $preset->get('modname'));
-            $row->category = $preset->get('category');
+            $row->category = $preset->get_formatted_category();
             $row->sectionnum = (int)$preset->get('sectionnum');
 
             $row->status = $preset->get('status');

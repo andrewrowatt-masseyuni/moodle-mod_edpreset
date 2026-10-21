@@ -75,7 +75,9 @@ class section_action {
         // Not a toggle, so no pressed state - but the property must exist: the template prints it
         // on both the link and the icon div.
         $item->ariapressed = '';
-        $item->arialabel = "aria-label='" . $label . "'";
+        // Escaped, since the theme prints this inside the tag as it stands: a translation or a
+        // customised string with an apostrophe in it would otherwise end the attribute early.
+        $item->arialabel = "aria-label='" . s($label) . "'";
         // The theme sets this itself on everything it moves into the menu. Set here too so the
         // object is complete on its own terms rather than only once the theme has been through it.
         $item->isinmenu = true;

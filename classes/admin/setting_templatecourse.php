@@ -65,7 +65,7 @@ class setting_templatecourse extends admin_setting_configtext {
     }
 
     /**
-     * Render the setting, with the resolved course name appended so the id can be sanity-checked.
+     * Render the setting, with the resolved course name below it so the id can be sanity-checked.
      *
      * @param mixed $data The current value.
      * @param string $query Search query.
@@ -74,11 +74,9 @@ class setting_templatecourse extends admin_setting_configtext {
     public function output_html($data, $query = '') {
         global $DB, $OUTPUT;
 
-        $html = parent::output_html($data, $query);
-
         $courseid = (int)$data;
         if (!$courseid) {
-            return $html;
+            return parent::output_html($data, $query);
         }
 
         $course = $DB->get_record('course', ['id' => $courseid], 'id, fullname, shortname');
@@ -95,7 +93,15 @@ class setting_templatecourse extends admin_setting_configtext {
             );
         }
 
-        // Slot the resolved name in just below the input, inside the setting's own markup.
-        return str_replace('</div></div>', $resolved . '</div></div>', $html);
+        // Shown with the description, which this class owns, rather than spliced into the markup core
+        // renders around the input, which it does not. The description goes through
+        // markdown_to_html(), and the blank line is what makes markdown pass the block through as HTML.
+        $description = $this->description;
+        $this->description .= "\n\n" . $resolved;
+        try {
+            return parent::output_html($data, $query);
+        } finally {
+            $this->description = $description;
+        }
     }
 }

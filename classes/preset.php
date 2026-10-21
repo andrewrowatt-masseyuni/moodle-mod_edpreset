@@ -18,6 +18,7 @@ namespace mod_edpreset;
 
 use cm_info;
 use core\persistent;
+use mod_edpreset\local\template;
 
 /**
  * One pseudo activity, derived from an exemplar activity in the template course.
@@ -63,10 +64,13 @@ class preset extends persistent {
             'modname' => ['type' => PARAM_PLUGIN],
             'instanceid' => ['type' => PARAM_INT],
             'contextid' => ['type' => PARAM_INT],
+            // The curator's preset name as typed. Formatted only when shown: see get_formatted_title().
             'title' => ['type' => PARAM_TEXT],
+            // Cleaned HTML like description, which it is built from. Filtered when shown.
             'help' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             // Cleaned HTML, rendered from the curator's text when the preset is scanned. PARAM_RAW
             // because the cleaning has already happened; it must never be re-cleaned or escaped here.
+            // Filters have not run on it: see get_formatted_description().
             'description' => ['type' => PARAM_RAW, 'default' => '', 'null' => NULL_ALLOWED],
             'tags' => ['type' => PARAM_TEXT, 'default' => ''],
             'defaultname' => ['type' => PARAM_TEXT, 'default' => ''],
@@ -76,9 +80,13 @@ class preset extends persistent {
             'archetype' => ['type' => PARAM_INT, 'default' => MOD_ARCHETYPE_OTHER],
             'purpose' => ['type' => PARAM_ALPHA, 'default' => MOD_PURPOSE_OTHER],
             'branded' => ['type' => PARAM_BOOL, 'default' => 0],
+            // The exemplar's section name as typed, or the format's default name for an unnamed one.
             'category' => ['type' => PARAM_TEXT, 'default' => ''],
             // Non-empty means this preset is a member of a section template, and is therefore
-            // offered only as part of that template - never as a card of its own.
+            // offered only as part of that template - never as a card of its own. The section name
+            // as typed, marker removed, and unformatted: it is also the template's identity, which a
+            // course records once it has used the template (see local\coursedefault), so it must not
+            // depend on filters or on who ran the scan.
             'templatename' => ['type' => PARAM_TEXT, 'default' => ''],
             // Whether the template this preset belongs to is marked [Template,restricted]. Carried on
             // every member, like templatename. Meaningless on a preset that is not a member.
@@ -98,6 +106,27 @@ class preset extends persistent {
             'timelasterror' => ['type' => PARAM_INT, 'default' => 0],
             'enabled' => ['type' => PARAM_BOOL, 'default' => 1],
         ];
+    }
+
+    /**
+     * A preset from the configured template course, by id.
+     *
+     * Anything acting on a preset id that arrived in a request looks it up here rather than by id
+     * alone. Rows outlive a change of template course until the next rescan sweeps them (see
+     * local\baker::remove_presets_except()), and a copy backs its exemplar up as the site
+     * administrator - so a stale row looked up by id would let a teacher copy an activity out of a
+     * course that is no longer the template course, and may by now be an ordinary one.
+     *
+     * @param int $id The preset id.
+     * @return self|null Null if there is no such enabled preset in the template course.
+     */
+    public static function get_from_template_course(int $id): ?self {
+        $courseid = template::get_courseid();
+        if (!$courseid) {
+            return null;
+        }
+
+        return self::get_record(['id' => $id, 'templatecourseid' => $courseid, 'enabled' => 1]) ?: null;
     }
 
     /**
@@ -161,6 +190,112 @@ class preset extends persistent {
         }
 
         return $cm->deletioninprogress ? null : $cm;
+    }
+
+    /**
+     * The preset's name, ready to show.
+     *
+     * Every piece of curator text on a preset is formatted when it is shown rather than when the
+     * preset is scanned, so that filters run for the person looking at it - in their language, for
+     * multilang - rather than once for whoever happened to run the scan.
+     *
+     * @param bool $escape True for text going straight into HTML; false for text that is escaped on
+     *     its way out anyway, such as a {{variable}} in Mustache, which would otherwise escape it twice.
+     * @return string
+     */
+    public function get_formatted_title(bool $escape = false): string {
+        return format_string(
+            (string)$this->get('title'),
+            true,
+            ['context' => \context_system::instance(), 'escape' => $escape]
+        );
+    }
+
+    /**
+     * The name of the exemplar's section, ready to show.
+     *
+     * @param bool $escape As for get_formatted_title().
+     * @return string
+     */
+    public function get_formatted_category(bool $escape = false): string {
+        return format_string(
+            (string)$this->get('category'),
+            true,
+            ['context' => $this->get_template_context(), 'escape' => $escape]
+        );
+    }
+
+    /**
+     * The name of the section template this preset belongs to, ready to show.
+     *
+     * @param bool $escape As for get_formatted_title().
+     * @return string '' if the preset is not a template member.
+     */
+    public function get_formatted_templatename(bool $escape = false): string {
+        return format_string(
+            (string)$this->get('templatename'),
+            true,
+            ['context' => $this->get_template_context(), 'escape' => $escape]
+        );
+    }
+
+    /**
+     * The preset's description, ready to show.
+     *
+     * @return string HTML.
+     */
+    public function get_formatted_description(): string {
+        return self::filter_html((string)$this->get('description'), \context_system::instance());
+    }
+
+    /**
+     * The description the standard activity chooser shows in its info panel, ready to show.
+     *
+     * @return string HTML.
+     */
+    public function get_formatted_help(): string {
+        return self::filter_html((string)$this->get('help'), \context_system::instance());
+    }
+
+    /**
+     * The exemplar's section summary, ready to show.
+     *
+     * @return string HTML, or '' when the section has no summary.
+     */
+    public function get_formatted_sectionsummary(): string {
+        return self::filter_html((string)$this->get('sectionsummary'), $this->get_template_context());
+    }
+
+    /**
+     * Run the filters over HTML that was cleaned when the preset was scanned.
+     *
+     * noclean is true because the cleaning has already happened, in local\baker, which formats with
+     * the filters switched off. Between the two calls the text gets exactly what one format_text()
+     * would give it - cleaned, then filtered - with the filtering done for the viewer.
+     *
+     * @param string $html Cleaned HTML.
+     * @param \context $context The context to filter in.
+     * @return string
+     */
+    protected static function filter_html(string $html, \context $context): string {
+        if (trim($html) === '') {
+            return '';
+        }
+
+        return format_text($html, FORMAT_HTML, ['context' => $context, 'noclean' => true]);
+    }
+
+    /**
+     * The context the section's own text - its name and summary - is formatted in.
+     *
+     * The template course's, as for a section of any course. The system context stands in for a
+     * template course that has since been deleted, whose rows can outlive it until the next rescan.
+     *
+     * @return \context
+     */
+    protected function get_template_context(): \context {
+        return \context_course::instance((int)$this->get('templatecourseid'), IGNORE_MISSING)
+            ?: \context_system::instance();
     }
 
     /**

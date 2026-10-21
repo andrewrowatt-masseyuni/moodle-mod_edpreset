@@ -127,8 +127,9 @@ export const open = async(root, templatesection, templatetitle) => {
             },
         }])[0];
 
+        // No title here: create() would hand it to setTitle(), which inserts it as HTML, and the
+        // template's name is plain text read back out of the card. It is set as text below.
         const modal = await ModalSaveCancel.create({
-            title: templatetitle,
             body: Templates.render('mod_edpreset/reorder_modal', {
                 templateitems: items.templateitems,
                 courseitems: items.courseitems,
@@ -138,6 +139,7 @@ export const open = async(root, templatesection, templatetitle) => {
             removeOnClose: true,
         });
 
+        modal.getTitle().text(templatetitle);
         modal.setSaveButtonText(await getString('reorder:confirm', 'mod_edpreset'));
 
         modal.getRoot().on(ModalEvents.save, () => {

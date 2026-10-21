@@ -18,6 +18,7 @@ namespace mod_edpreset\local;
 
 use cm_info;
 use core_courseformat\sectiondelegate;
+use core_favourites\service_factory;
 use mod_edpreset\meta;
 use mod_edpreset\preset;
 use mod_edpreset\task\rebuild_presets;
@@ -42,10 +43,16 @@ class baker {
      * @return array{scanned: int, removed: int}
      */
     public static function rebuild(): array {
+        global $CFG;
+
         $course = template::get();
         if (!$course) {
             return ['scanned' => 0, 'removed' => 0];
         }
+
+        // For course_get_format() in section_data(). course/lib.php is not part of the standard
+        // bootstrap, and nothing on the way here from a task loads it.
+        require_once($CFG->dirroot . '/course/lib.php');
 
         $seen = [];
         $sortorder = 0;
@@ -71,7 +78,7 @@ class baker {
             }
         }
 
-        $removed = self::remove_presets_except($course, $seen);
+        $removed = self::remove_presets_except($seen);
 
         return ['scanned' => count($seen), 'removed' => $removed];
     }
@@ -145,19 +152,19 @@ class baker {
      * @return array{category: string, templatename: string, templaterestricted: bool, sectionsummary: string}
      */
     protected static function section_data(stdClass $course, section_info $sectioninfo): array {
-        // Deliberately the raw name: get_section_name() below is format_string()ed and falls back to
-        // "Topic 3", neither of which should decide whether a section is a template.
         $istemplate = template::is_template_section_name($sectioninfo->name);
 
+        // Both names are stored as typed and formatted only when shown (see preset), so that filters
+        // run for whoever is looking rather than for whoever ran the scan. The category is what
+        // get_section_name() would show, short of formatting: the name if there is one, otherwise the
+        // format's own default such as "Topic 3".
+        $name = (string)$sectioninfo->name;
+
         return [
-            'category' => get_section_name($course, $sectioninfo),
-            'templatename' => $istemplate
-                ? format_string(
-                    template::strip_template_marker($sectioninfo->name),
-                    true,
-                    ['context' => \context_course::instance((int)$course->id)]
-                )
-                : '',
+            'category' => $name !== ''
+                ? $name
+                : course_get_format($course)->get_default_section_name($sectioninfo),
+            'templatename' => $istemplate ? template::strip_template_marker($name) : '',
             'templaterestricted' => template::is_restricted_section_name($sectioninfo->name),
             'sectionsummary' => self::render_section_summary($sectioninfo),
         ];
@@ -179,8 +186,10 @@ class baker {
      * access the template course: core serves that filearea through require_course_login(). Section
      * summaries in the template course should be text.
      *
+     * The filters are left off, as for a description: see render_description().
+     *
      * @param section_info $sectioninfo The section.
-     * @return string Cleaned HTML, or '' when the section has no summary.
+     * @return string Cleaned, unfiltered HTML, or '' when the section has no summary.
      */
     protected static function render_section_summary(section_info $sectioninfo): string {
         $summary = (string)$sectioninfo->summary;
@@ -200,7 +209,7 @@ class baker {
                 $sectioninfo->id
             ),
             (int)$sectioninfo->summaryformat,
-            ['context' => $context, 'noclean' => false]
+            ['context' => $context, 'noclean' => false, 'filter' => false]
         );
     }
 
@@ -266,18 +275,23 @@ class baker {
      * which the text crosses out of the template course and becomes readable by everyone who can add
      * an activity, and both the chooser and the preset page render it unescaped.
      *
+     * Filtered at display time, though, not here. A filter's output depends on who is looking - their
+     * language, for multilang - and the scan runs as whoever triggered it: the administrator who
+     * pressed Rescan, or cron. Filtered here, one person's view would be stored for everyone. See
+     * preset::get_formatted_description().
+     *
      * The format comes off the row rather than being assumed. It is FORMAT_HTML for anything typed
      * in the rich text editor, but a site running the plain textarea editor is still offered the
      * whole format menu, so the stored format is what decides.
      *
      * @param meta $details The curator's preset details.
-     * @return string Cleaned HTML.
+     * @return string Cleaned, unfiltered HTML.
      */
     protected static function render_description(meta $details): string {
         return format_text(
             (string)$details->get('description'),
             (int)$details->get('descriptionformat'),
-            ['context' => \context_system::instance(), 'noclean' => false]
+            ['context' => \context_system::instance(), 'noclean' => false, 'filter' => false]
         );
     }
 
@@ -289,7 +303,7 @@ class baker {
      * without any change to core.
      *
      * @param preset $preset The preset, with its description already set.
-     * @return string Cleaned HTML.
+     * @return string Cleaned, unfiltered HTML, like the description. See preset::get_formatted_help().
      */
     protected static function build_help(preset $preset): string {
         $help = (string)$preset->get('description');
@@ -308,13 +322,17 @@ class baker {
     /**
      * Delete presets whose exemplar is no longer in the template course.
      *
-     * @param stdClass $course The template course.
+     * Every preset not kept goes, whichever course it came from, so this also sweeps away what a
+     * previous template course left behind once the setting is pointed at a new one. Nothing offers
+     * or copies those (see preset::get_from_template_course()), but they would otherwise keep their
+     * stars and sit on the manage page indefinitely.
+     *
      * @param int[] $keepids Preset ids to keep.
      * @return int How many were removed.
      */
-    protected static function remove_presets_except(stdClass $course, array $keepids): int {
+    protected static function remove_presets_except(array $keepids): int {
         $removed = 0;
-        foreach (preset::get_records(['templatecourseid' => (int)$course->id]) as $preset) {
+        foreach (preset::get_records() as $preset) {
             if (in_array((int)$preset->get('id'), $keepids, true)) {
                 continue;
             }
@@ -330,28 +348,17 @@ class baker {
      * @param preset $preset The preset.
      */
     public static function delete_preset(preset $preset): void {
-        global $DB;
-
         $presetid = (int)$preset->get('id');
 
-        // Favourites and recommendations point at this preset id. \core_favourites has no bulk
-        // delete for an arbitrary item, so this is done directly. The contextid is deliberately
-        // not part of the criteria: the preset chooser page's stars live in each user's own
-        // context, so there is a different one per user.
-        $DB->delete_records_select(
-            'favourite',
-            "(component = :core AND itemtype IN (:chooseritem, :recommend) AND itemid = :itemid)
-             OR (component = :ours AND itemtype = :ouritemtype AND itemid = :ouritemid)",
-            [
-                'core' => 'core_course',
-                'chooseritem' => 'contentitem_mod_edpreset',
-                'recommend' => 'recommend_mod_edpreset',
-                'itemid' => $presetid,
-                'ours' => preset::FAVOURITE_COMPONENT,
-                'ouritemtype' => preset::FAVOURITE_ITEMTYPE,
-                'ouritemid' => $presetid,
-            ]
-        );
+        // Three kinds of star point at this preset id: the standard activity chooser's and the
+        // "Recommend activities" page's, both core_course's and keyed on the content item id, and
+        // the preset chooser page's own. No context is given, so each goes from every context it is
+        // in - the stars live in each user's own context, a different one per user.
+        $coreservice = service_factory::get_service_for_component('core_course');
+        $coreservice->delete_favourites_by_type_and_item('contentitem_mod_edpreset', $presetid);
+        $coreservice->delete_favourites_by_type_and_item('recommend_mod_edpreset', $presetid);
+        service_factory::get_service_for_component(preset::FAVOURITE_COMPONENT)
+            ->delete_favourites_by_type_and_item(preset::FAVOURITE_ITEMTYPE, $presetid);
 
         $preset->delete();
     }

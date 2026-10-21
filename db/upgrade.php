@@ -239,5 +239,67 @@ function xmldb_edpreset_upgrade($oldversion) {
         upgrade_mod_savepoint(true, 2026100204, 'edpreset');
     }
 
+    if ($oldversion < 2026102200) {
+        // Section template names used to be stored already through format_string(), and are now
+        // stored as typed and formatted only when shown. The name is also the template's identity:
+        // a course records it in a custom field once it has used the template, and compares against
+        // it from then on. So wherever formatting changed a name - an ampersand, which it escapes,
+        // is the usual case - the old spelling is rewritten to the new one in both places, or those
+        // courses would stop recognising their own template until a curator noticed.
+        $courseid = (int)get_config('mod_edpreset', 'templatecourseid');
+        if ($courseid && $DB->record_exists('course', ['id' => $courseid])) {
+            $fieldid = $DB->get_field_sql(
+                "SELECT f.id
+                   FROM {customfield_field} f
+                   JOIN {customfield_category} c ON c.id = f.categoryid
+                  WHERE f.shortname = :shortname AND c.component = :component AND c.area = :area",
+                ['shortname' => 'defaultsectiontemplate', 'component' => 'core_course', 'area' => 'course']
+            );
+            $context = context_course::instance($courseid);
+
+            $sections = $DB->get_records_select(
+                'course_sections',
+                'course = :courseid AND section > 0',
+                ['courseid' => $courseid],
+                '',
+                'id, section, name'
+            );
+            foreach ($sections as $section) {
+                if (!\mod_edpreset\local\template::is_template_section_name($section->name)) {
+                    continue;
+                }
+                $name = \mod_edpreset\local\template::strip_template_marker($section->name);
+                // Exactly what the scan used to store.
+                $old = format_string($name, true, ['context' => $context]);
+                if ($old === $name) {
+                    continue;
+                }
+
+                $DB->set_field(
+                    'edpreset_item',
+                    'templatename',
+                    $name,
+                    ['templatecourseid' => $courseid, 'sectionnum' => $section->section]
+                );
+                if ($fieldid) {
+                    // The value column first, while charvalue still holds the old name to find the rows by.
+                    $DB->set_field_select(
+                        'customfield_data',
+                        'value',
+                        $name,
+                        'fieldid = :fieldid AND charvalue = :old',
+                        ['fieldid' => $fieldid, 'old' => $old]
+                    );
+                    $DB->set_field('customfield_data', 'charvalue', $name, ['fieldid' => $fieldid, 'charvalue' => $old]);
+                }
+            }
+        }
+
+        // Everything else the scan derives is now stored unformatted and unfiltered as well.
+        \core\task\manager::queue_adhoc_task(new \mod_edpreset\task\rebuild_presets(), true);
+
+        upgrade_mod_savepoint(true, 2026102200, 'edpreset');
+    }
+
     return true;
 }

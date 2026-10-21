@@ -204,7 +204,7 @@ final class access_test extends \advanced_testcase {
         $course = $generator->create_course(['category' => $sub->id]);
         $teacher = $generator->create_and_enrol($course, 'editingteacher');
 
-        $template = new section_template(3, 'Learning model', '', [], true);
+        $template = new section_template(3, 'Learning model', [], true);
 
         return [$course, $top, $sub, $teacher, $template];
     }
@@ -216,7 +216,7 @@ final class access_test extends \advanced_testcase {
         [$course, , , $teacher] = $this->setup_restricted();
         $this->setUser($teacher);
 
-        $this->assertTrue(access::can_use_template($course, new section_template(3, 'Learning model', '', [])));
+        $this->assertTrue(access::can_use_template($course, new section_template(3, 'Learning model', [])));
     }
 
     /**

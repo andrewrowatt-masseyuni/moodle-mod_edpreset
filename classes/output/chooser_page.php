@@ -205,6 +205,7 @@ class chooser_page implements renderable, templatable {
 
         $starred = [];
         $bycategory = [];
+        $names = [];
         $summaries = [];
         foreach ($presets as $preset) {
             $card = $this->export_card($preset, $favourites);
@@ -215,18 +216,29 @@ class chooser_page implements renderable, templatable {
                 $starred[] = $card;
             }
 
+            // Grouped on the name as typed, so that the groups - and the collapse keys derived from
+            // them - do not shift with the viewer's language.
             $category = (string)$preset->get('category');
             $bycategory[$category][] = $card;
+            $names[$category] ??= $preset->get_formatted_category();
             // Every preset from a section carries the same copy. The first non-empty one wins, so
             // that two sections sharing a name - and therefore a group - still show a summary.
             if (($summaries[$category] ?? '') === '') {
-                $summaries[$category] = (string)$preset->get('sectionsummary');
+                $summaries[$category] = $preset->get_formatted_sectionsummary();
             }
         }
 
         $categories = [];
         foreach ($bycategory as $category => $cards) {
-            $categories[] = $this->export_group($category, $cards, $collapsed, false, false, $summaries[$category]);
+            $categories[] = $this->export_group(
+                $names[$category],
+                $cards,
+                $collapsed,
+                false,
+                false,
+                $summaries[$category],
+                $category
+            );
         }
 
         return [
@@ -253,6 +265,11 @@ class chooser_page implements renderable, templatable {
      * Only someone who can review presets is offered any, so only they ever see this group. Its cards
      * have no star - a star puts a preset in the activity chooser, which never offers one in review.
      *
+     * The buttons are only for someone who can review presets across the whole site, since that is
+     * what a decision affects (see access::can_decide_reviews()). Someone who can review presets in
+     * this course alone sees the same group without them: they can try the presets out, and the help
+     * text tells them someone else decides.
+     *
      * A section template's activity in review is here too, and can be added on its own like any other
      * card: access::can_add_on_its_own() lets a reviewer do that wherever its template could go, and
      * a template this course may not use has already had its members taken off the page.
@@ -262,11 +279,16 @@ class chooser_page implements renderable, templatable {
      * @return stdClass
      */
     protected function export_review_group(array $presets, array $collapsed): stdClass {
+        $candecide = access::can_decide_reviews();
+        $help = $candecide
+            ? get_string('chooser:reviewhelp', 'mod_edpreset')
+            : get_string('chooser:reviewhelptryonly', 'mod_edpreset');
+
         $cards = [];
         foreach ($presets as $preset) {
             $card = $this->export_card($preset, []);
             $card->starrable = false;
-            $card->reviewable = true;
+            $card->reviewable = $candecide;
             $cards[] = $card;
         }
 
@@ -276,7 +298,7 @@ class chooser_page implements renderable, templatable {
             $collapsed,
             false,
             false,
-            \html_writer::tag('p', get_string('chooser:reviewhelp', 'mod_edpreset')),
+            \html_writer::tag('p', $help),
             // Kept apart from a category that happens to share the group's name.
             'review:'
         );
@@ -326,7 +348,7 @@ class chooser_page implements renderable, templatable {
             }
 
             return $this->export_group(
-                get_string('chooser:usedtemplateitems', 'mod_edpreset', $template->get_name()),
+                get_string('chooser:usedtemplateitems', 'mod_edpreset', $template->get_formatted_name()),
                 $cards,
                 $collapsed,
                 false,
@@ -443,9 +465,9 @@ class chooser_page implements renderable, templatable {
         // Mustache cannot choose a partial dynamically, so the template branches on this.
         $group->istemplategroup = $istemplategroup;
         $group->cards = $cards;
-        // Already cleaned when the preset was scanned, so the template renders it unescaped - the
-        // same contract as a preset description. html_is_blank() so an emptied editor's "<p></p>"
-        // shows nothing.
+        // Cleaned when the preset was scanned and filtered by the caller, so the template renders it
+        // unescaped - the same contract as a preset description. html_is_blank() so an emptied
+        // editor's "<p></p>" shows nothing.
         $group->summary = $summary;
         $group->hassummary = !html_is_blank($summary);
         $group->count = count($cards);
@@ -468,14 +490,14 @@ class chooser_page implements renderable, templatable {
     protected function export_template_card(section_template $template, string $usedtemplate = ''): stdClass {
         $tags = $template->get_tags();
         $sections = $template->get_recommended_sections();
-        $summary = $template->get_summary();
+        $summary = $template->get_formatted_summary();
         $modulenames = $template->get_module_names();
 
         $card = new stdClass();
         $card->templatesection = $template->get_sectionnum();
-        $card->title = $template->get_name();
-        // Already cleaned when the preset was scanned, so the template renders it unescaped - same
-        // contract as a preset description.
+        $card->title = $template->get_formatted_name();
+        // Cleaned when the preset was scanned and filtered just now, so the template renders it
+        // unescaped - same contract as a preset description.
         $card->description = $summary;
         // The first member's icon, with the classes that colour it: the icon container needs the
         // module, purpose and branded flag or the icon comes out grey.
@@ -563,14 +585,14 @@ class chooser_page implements renderable, templatable {
      */
     protected function export_card(preset $preset, array $favourites): stdClass {
         $presetid = (int)$preset->get('id');
-        $description = (string)$preset->get('description');
+        $description = $preset->get_formatted_description();
         $tags = meta::split_tags((string)$preset->get('tags'));
         $section = (string)$preset->get('recommendedsection');
         $sections = $section !== '' ? [$section] : [];
 
         $card = new stdClass();
         $card->presetid = $presetid;
-        $card->title = $preset->get('title');
+        $card->title = $preset->get_formatted_title();
         $card->description = $description;
         $card->icon = $preset->get_icon_html();
         $card->modname = $preset->get('modname');
