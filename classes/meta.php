@@ -135,6 +135,34 @@ class meta extends persistent {
     }
 
     /**
+     * Remove the details of every activity that no longer exists.
+     *
+     * The delete observer removes an activity's details only while the plugin is on and the
+     * activity is in the template course, so an exemplar deleted at any other time leaves its
+     * details behind, as does a course deletion that removes its modules without saying which.
+     *
+     * The orphans are found with a join rather than with NOT IN over course_modules, which on a
+     * large site is a subquery over every activity there is.
+     *
+     * @return int How many were removed.
+     */
+    public static function delete_orphans(): int {
+        global $DB;
+
+        $orphans = $DB->get_fieldset_sql(
+            'SELECT m.id
+               FROM {' . self::TABLE . '} m
+          LEFT JOIN {course_modules} cm ON cm.id = m.cmid
+              WHERE cm.id IS NULL'
+        );
+        if ($orphans) {
+            $DB->delete_records_list(self::TABLE, 'id', $orphans);
+        }
+
+        return count($orphans);
+    }
+
+    /**
      * Give a duplicated exemplar a draft copy of the original's preset details.
      *
      * Curators rework a released preset by duplicating it, so that teachers keep getting the

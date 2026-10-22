@@ -227,7 +227,13 @@ class chooser {
      * @return preset[]
      */
     protected static function get_offered_presets(bool $canreview): array {
-        $max = (int)get_config('mod_edpreset', 'maxpresets') ?: self::DEFAULT_MAX_PRESETS;
+        // The setting only accepts a whole number from 1, but anything else that reaches it - unset,
+        // or written by a config.php or a CLI - falls back to the default rather than offering
+        // nothing.
+        $max = (int)get_config('mod_edpreset', 'maxpresets');
+        if ($max < 1) {
+            $max = self::DEFAULT_MAX_PRESETS;
+        }
 
         $candidates = preset::get_records(
             ['templatecourseid' => template::get_courseid(), 'enabled' => 1],

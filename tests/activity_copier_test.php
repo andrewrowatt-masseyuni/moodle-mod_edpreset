@@ -254,6 +254,38 @@ final class activity_copier_test extends \advanced_testcase {
     }
 
     /**
+     * A copy that fails after its restore has worked leaves nothing in the teacher's course either.
+     *
+     * The restore is not the last thing that can go wrong: placing, renaming and refreshing the copy
+     * all happen once it is already in the course, and the teacher is told the preset could not be
+     * added. Nor in their recycle bin: a failed copy is not something they deleted.
+     */
+    public function test_a_copy_that_fails_after_its_restore_leaves_nothing_behind(): void {
+        global $DB;
+        $this->resetAfterTest();
+        [, $preset] = $this->exemplar('page');
+
+        // Within the default name's own limit, but with tags allowed in names core's rename cleans
+        // with PARAM_CLEANHTML, which writes each ampersand as &amp; - so the cleaned name is over
+        // the 255 characters the rename accepts, and it throws.
+        set_config('formatstringstriptags', 0);
+        $preset->set('defaultname', str_repeat('Q&A ', 60));
+        $preset->update();
+
+        $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
+        $this->setAdminUser();
+
+        $result = activity_copier::copy_many([$preset], $course, 1);
+        $this->assertDebuggingCalledCount(1);
+
+        $this->assertSame([], $result['added']);
+        $this->assertCount(1, $result['failed']);
+        $this->assertSame(0, $DB->count_records('course_modules', ['course' => $course->id]));
+        $this->assertEmpty(get_fast_modinfo($course)->get_cms());
+        $this->assertSame(0, $DB->count_records('tool_recyclebin_course', ['courseid' => $course->id]));
+    }
+
+    /**
      * A preset with a default activity name renames the copy.
      *
      * The rename has to happen before copy() reads modinfo: set_coursemodule_name() purges and

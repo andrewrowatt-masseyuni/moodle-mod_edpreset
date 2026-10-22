@@ -68,8 +68,12 @@ class set_favourite extends external_api {
         $usercontext = context_user::instance($USER->id);
         self::validate_context($usercontext);
 
-        // Starring something that does not exist would leave a row nothing ever cleans up.
-        if (!preset::record_exists($presetid)) {
+        // Starring something that does not exist would leave a row nothing ever cleans up. A star can
+        // only go on what the page offers a star for - a released preset that is not part of a
+        // section template (see chooser_page::export_card()) - but one can come off any preset in the
+        // template course, so a star on a preset withdrawn since it was given can still be removed.
+        $preset = preset::get_from_template_course($presetid);
+        if (!$preset || ($favourite && (!$preset->is_offered(false) || $preset->is_template_member()))) {
             throw new moodle_exception('invalidpreset', 'mod_edpreset');
         }
 

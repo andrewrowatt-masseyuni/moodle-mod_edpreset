@@ -58,7 +58,8 @@ if ($ADMIN->fulltree) {
         get_string('settings:maxpresets', 'mod_edpreset'),
         get_string('settings:maxpresets_desc', 'mod_edpreset'),
         100,
-        PARAM_INT
+        // A whole number from 1, rather than PARAM_INT: zero or less would offer nothing at all.
+        '/^[1-9][0-9]*$/'
     ));
 
     $settings->add(new admin_setting_configtextarea(

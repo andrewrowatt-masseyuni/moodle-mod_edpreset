@@ -73,6 +73,9 @@ class access {
         // failure part way through.
         require_capability('moodle/restore:restoretargetimport', $coursecontext);
 
+        // This plugin's own capability only, never the exemplar module's: deliberately, since a
+        // preset's release status is what decides whether teachers may have it. See README.md,
+        // "Access control".
         if (!course_allowed_module($course, 'edpreset')) {
             throw new moodle_exception('moduledisable');
         }

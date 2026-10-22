@@ -16,6 +16,7 @@
 
 namespace mod_edpreset\task;
 
+use mod_edpreset\meta;
 use mod_edpreset\preset;
 
 /**
@@ -59,5 +60,39 @@ final class reconcile_presets_test extends \advanced_testcase {
 
         $this->expectOutputString("mod_edpreset: no template course configured, nothing to reconcile.\n");
         (new reconcile_presets())->execute();
+    }
+
+    /**
+     * Preset details left behind by a deleted activity are removed, with or without a template course.
+     *
+     * The delete observer only removes the details of an exemplar deleted while the plugin is on and
+     * its course is the template course. Anything deleted otherwise leaves them for this task.
+     */
+    public function test_execute_removes_orphaned_details(): void {
+        global $CFG;
+        require_once($CFG->dirroot . '/course/lib.php');
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $course = $generator->create_course();
+        $kept = $generator->create_module('page', ['course' => $course->id]);
+        $deleted = $generator->create_module('page', ['course' => $course->id]);
+        $plugingenerator->create_metadata((int)$kept->cmid);
+        $plugingenerator->create_metadata((int)$deleted->cmid);
+
+        // No template course is configured, so the observer leaves the details where they are.
+        set_config('templatecourseid', 0, 'mod_edpreset');
+        course_delete_module((int)$deleted->cmid);
+        $this->assertTrue(meta::exists_for_cm((int)$deleted->cmid));
+
+        $this->expectOutputString(
+            "mod_edpreset: 1 orphaned preset details removed.\n"
+            . "mod_edpreset: no template course configured, nothing to reconcile.\n"
+        );
+        (new reconcile_presets())->execute();
+
+        $this->assertFalse(meta::exists_for_cm((int)$deleted->cmid));
+        $this->assertTrue(meta::exists_for_cm((int)$kept->cmid));
     }
 }

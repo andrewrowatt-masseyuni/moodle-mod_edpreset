@@ -386,8 +386,8 @@ final class lib_test extends \advanced_testcase {
     /**
      * A preset ready for review never reaches the activity chooser, not even a reviewer's.
      *
-     * Not when its details say to show it there, and not when the reviewer has starred it on the
-     * preset chooser page: reviewers find it in that page's review group instead.
+     * Not when its details say to show it there, and not when the reviewer starred it on the preset
+     * chooser page while it was released: reviewers find it in that page's review group instead.
      */
     public function test_presets_in_review_never_reach_the_activity_chooser(): void {
         global $DB;
@@ -408,12 +408,14 @@ final class lib_test extends \advanced_testcase {
         $released = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id]);
         $inreview = $plugingenerator->create_preset([
             'templatecourseid' => $templatecourse->id,
-            'status' => meta::STATUS_REVIEW,
             'showinchooser' => 1,
         ]);
 
+        // Starred while released - a preset in review cannot be starred - then sent back for review.
         $this->setUser($reviewer);
         \mod_edpreset\external\set_favourite::execute((int)$inreview->get('id'), true);
+        $inreview->set('status', meta::STATUS_REVIEW);
+        $inreview->update();
 
         $this->assertSame(
             [(int)$released->get('id')],
@@ -423,6 +425,36 @@ final class lib_test extends \advanced_testcase {
         // Nor in the context-free list: it can never be starred or recommended there.
         $allids = array_map(fn($item) => $item->get_id(), chooser::get_all_content_items());
         $this->assertNotContains((int)$inreview->get('id'), $allids);
+    }
+
+    /**
+     * maxpresets caps what is offered, and a value below 1 falls back to the default.
+     *
+     * The admin setting accepts nothing below 1, but a value set from config.php or the CLI is not
+     * validated, and zero or less would otherwise offer no presets at all.
+     *
+     * @dataProvider maxpresets_provider
+     * @param string $setting The maxpresets setting.
+     * @param int $expected How many of the three presets are offered.
+     */
+    public function test_maxpresets_caps_what_is_offered(string $setting, int $expected): void {
+        [$course, $teacher] = $this->setup_site(3);
+        set_config('maxpresets', $setting, 'mod_edpreset');
+
+        $this->assertCount($expected, $this->our_items($teacher, $course));
+    }
+
+    /**
+     * Values of the maxpresets setting.
+     *
+     * @return array
+     */
+    public static function maxpresets_provider(): array {
+        return [
+            'below the number of presets' => ['2', 2],
+            'zero' => ['0', 3],
+            'negative' => ['-1', 3],
+        ];
     }
 
     /**

@@ -265,10 +265,14 @@ function xmldb_edpreset_upgrade($oldversion) {
                 'id, section, name'
             );
             foreach ($sections as $section) {
-                if (!\mod_edpreset\local\template::is_template_section_name($section->name)) {
+                // The template marker as this version matches and strips it, written out here rather
+                // than taken from local\template: this step must keep doing exactly this however the
+                // marker changes later.
+                $rawname = trim((string)$section->name);
+                if (!preg_match('/\[\s*template\s*(?:,([^\]]*))?\]$/iu', $rawname, $matches, PREG_OFFSET_CAPTURE)) {
                     continue;
                 }
-                $name = \mod_edpreset\local\template::strip_template_marker($section->name);
+                $name = trim(substr($rawname, 0, $matches[0][1]));
                 // Exactly what the scan used to store.
                 $old = format_string($name, true, ['context' => $context]);
                 if ($old === $name) {

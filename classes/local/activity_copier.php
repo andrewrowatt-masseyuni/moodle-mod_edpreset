@@ -68,26 +68,19 @@ class activity_copier {
         int $beforemod = 0,
         ?progress_base $progress = null
     ): cm_info {
-        global $CFG;
-
-        // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
-        // bootstrap - so an external function reaching here has nothing loaded.
-        require_once($CFG->dirroot . '/course/lib.php');
-
         $exemplar = $preset->get_exemplar();
         if (!$exemplar) {
             throw new moodle_exception('exemplarmissing', 'mod_edpreset');
         }
 
-        $newcmid = self::copy_activity($exemplar, $course, $sectionnum, $beforemod, $progress);
-
-        // Before the modinfo read below, not after: set_coursemodule_name() purges and rebuilds
-        // the course cache, so a rename afterwards would leave the returned cm_info holding the
-        // exemplar's name - which is exactly what the caller displays.
-        $defaultname = trim((string)$preset->get('defaultname'));
-        if ($defaultname !== '') {
-            set_coursemodule_name($newcmid, $defaultname);
-        }
+        $newcmid = self::copy_activity(
+            $exemplar,
+            $course,
+            $sectionnum,
+            $beforemod,
+            $progress,
+            trim((string)$preset->get('defaultname'))
+        );
 
         return get_fast_modinfo($course->id)->get_cm($newcmid);
     }
@@ -113,20 +106,25 @@ class activity_copier {
      * @param int $sectionnum The section number to place the activity in.
      * @param int $beforemod Course module id to insert before, or 0 to append.
      * @param progress_base|null $progress Optional progress reporter, used by both halves.
+     * @param string $name The name to give the copy, or '' to keep the exemplar's.
      * @return int The new course module id.
-     * @throws moodle_exception If the backup or the restore fails.
+     * @throws moodle_exception If the backup, the restore or tidying the copy fails.
      */
     public static function copy_activity(
         cm_info $source,
         stdClass $course,
         int $sectionnum,
         int $beforemod = 0,
-        ?progress_base $progress = null
+        ?progress_base $progress = null,
+        string $name = ''
     ): int {
-        global $CFG, $DB, $USER;
+        global $CFG, $USER;
 
         require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
         require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
+        // Holds moveto_module() and set_coursemodule_name(), and is not part of the standard
+        // bootstrap - so an external function reaching here has nothing loaded.
+        require_once($CFG->dirroot . '/course/lib.php');
 
         [$backupid, $basepath] = self::backup($source, $progress);
         try {
@@ -137,33 +135,69 @@ class activity_copier {
             }
         }
 
-        self::place($course, $newcmid, $sectionnum, $beforemod);
+        // The restore has worked, so from here the copy is in the teacher's course. Anything below
+        // that throws would leave it there - wherever the restore put it, still carrying the
+        // exemplar's idnumber and availability - while the teacher is told the preset could not be
+        // added. So a failure takes the copy out again, as a failed restore does.
+        try {
+            self::tidy($course, $newcmid, $sectionnum, $beforemod, $name);
+        } catch (Throwable $e) {
+            self::remove_copies($course, [$newcmid]);
+            throw $e;
+        }
+
+        // The restore subsystem does not fire course_module_created - which is exactly why core's
+        // duplicate_module() triggers it by hand. Without this, completion, competencies and any
+        // third-party observers never learn the activity exists. Last, and outside the clean-up
+        // above: once observers have been told the activity exists, it is not this class's to take
+        // away again.
+        $cminfo = get_fast_modinfo($course->id)->get_cm($newcmid);
+        \core\event\course_module_created::create_from_cm($cminfo)->trigger();
+
+        return $newcmid;
+    }
+
+    /**
+     * Turn a freshly restored activity into the teacher's copy.
+     *
+     * @param stdClass $course The target course.
+     * @param int $newcmid The restored course module id.
+     * @param int $sectionnum The section number to place the activity in.
+     * @param int $beforemod Course module id to insert before, or 0 to append.
+     * @param string $name The name to give the copy, or '' to keep the exemplar's.
+     */
+    protected static function tidy(stdClass $course, int $newcmid, int $sectionnum, int $beforemod, string $name): void {
+        global $DB;
 
         // The restored activity carries the exemplar's idnumber, availability rules and expected
         // completion date. An idnumber must be unique within a course, availability references
         // ids that only mean something in the template course, and a date copied from an exemplar
-        // is never the date the teacher wants.
+        // is never the date the teacher wants. Cleared first, so that a copy the clean-up fails to
+        // remove does not keep them either.
         $DB->set_field('course_modules', 'idnumber', '', ['id' => $newcmid]);
         $DB->set_field('course_modules', 'availability', null, ['id' => $newcmid]);
         $DB->set_field('course_modules', 'completionexpected', 0, ['id' => $newcmid]);
+
+        self::place($course, $newcmid, $sectionnum, $beforemod);
 
         // Before the calendar is refreshed below, so the events are built from the cleared dates
         // rather than the exemplar's.
         $newcm = get_coursemodule_from_id('', $newcmid, $course->id, false, MUST_EXIST);
         scrubber::scrub($newcm->modname, (int)$newcm->instance);
 
+        // Here rather than once the caller has the copy, and before course_module_created, as
+        // core's duplicate_module() renames too: set_coursemodule_name() purges and rebuilds the
+        // course cache, so a rename afterwards would leave the caller's cm_info - which is what it
+        // displays - holding the exemplar's name, and a rename that throws would leave the copy
+        // behind. After the scrub, because the rename refreshes the calendar events itself.
+        if ($name !== '') {
+            set_coursemodule_name($newcmid, $name);
+        }
+
         rebuild_course_cache($course->id, true);
 
         $newcm = get_coursemodule_from_id('', $newcmid, $course->id, false, MUST_EXIST);
         course_module_update_calendar_events($newcm->modname, null, $newcm);
-
-        // The restore subsystem does not fire course_module_created - which is exactly why core's
-        // duplicate_module() triggers it by hand. Without this, completion, competencies and any
-        // third-party observers never learn the activity exists.
-        $cminfo = get_fast_modinfo($course->id)->get_cm($newcmid);
-        \core\event\course_module_created::create_from_cm($cminfo)->trigger();
-
-        return $newcmid;
     }
 
     /**
@@ -285,51 +319,68 @@ class activity_copier {
      * part way breaks in their course. The activity task records the course module as soon as it
      * creates one, which is what lets this find it.
      *
-     * Best effort: the restore's own failure is what the caller reports, so a failure here is
-     * logged rather than thrown over it.
-     *
      * @param restore_controller $rc The controller whose plan threw.
      * @param stdClass $course The target course.
      */
     protected static function remove_partial_restore(restore_controller $rc, stdClass $course): void {
-        global $CFG, $DB;
+        global $DB;
 
+        $cmids = [];
         foreach ($rc->get_plan()->get_tasks() as $task) {
             if (!is_subclass_of($task, 'restore_activity_task')) {
                 continue;
             }
 
             $cmid = (int)$task->get_moduleid();
-            if (!$cmid || !$DB->record_exists('course_modules', ['id' => $cmid, 'course' => $course->id])) {
-                continue;
+            if ($cmid && $DB->record_exists('course_modules', ['id' => $cmid, 'course' => $course->id])) {
+                $cmids[] = $cmid;
             }
+        }
 
-            // A failed copy is not something the teacher deleted, so it must not turn up in their
-            // course's recycle bin. Forcing the setting for the length of the delete is the same
-            // device the recycle bin itself uses on the backup settings.
-            $forced = $CFG->forced_plugin_settings['tool_recyclebin'] ?? null;
-            $CFG->forced_plugin_settings['tool_recyclebin']['coursebinenable'] = 0;
-            try {
-                course_delete_module($cmid);
-            } catch (Throwable $e) {
-                // The restore can stop before it has created the activity's own record, and
-                // course_delete_module() refuses to go on without one. What exists by then is the
-                // course module and its place in the section.
+        self::remove_copies($course, $cmids);
+    }
+
+    /**
+     * Delete course modules that a failed copy had already put into the teacher's course.
+     *
+     * Best effort: the copy's own failure is what the caller reports, so a failure here is logged
+     * rather than thrown over it.
+     *
+     * @param stdClass $course The target course.
+     * @param int[] $cmids The course modules to delete.
+     */
+    protected static function remove_copies(stdClass $course, array $cmids): void {
+        global $CFG;
+
+        // A failed copy is not something the teacher deleted, so it must not turn up in their
+        // course's recycle bin. Forcing the setting for the length of the delete is the same
+        // device the recycle bin itself uses on the backup settings.
+        $forced = $CFG->forced_plugin_settings['tool_recyclebin'] ?? null;
+        $CFG->forced_plugin_settings['tool_recyclebin']['coursebinenable'] = 0;
+        try {
+            foreach ($cmids as $cmid) {
                 try {
-                    self::remove_course_module($cmid);
+                    course_delete_module($cmid);
                 } catch (Throwable $e) {
-                    debugging(
-                        'mod_edpreset: could not remove a partly restored activity (course module ' . $cmid . '): '
-                            . $e->getMessage(),
-                        DEBUG_NORMAL
-                    );
+                    // The restore can stop before it has created the activity's own record, and
+                    // course_delete_module() refuses to go on without one. What exists by then is
+                    // the course module and its place in the section.
+                    try {
+                        self::remove_course_module($cmid);
+                    } catch (Throwable $e) {
+                        debugging(
+                            'mod_edpreset: could not remove a partly copied activity (course module ' . $cmid . '): '
+                                . $e->getMessage(),
+                            DEBUG_NORMAL
+                        );
+                    }
                 }
-            } finally {
-                if ($forced === null) {
-                    unset($CFG->forced_plugin_settings['tool_recyclebin']);
-                } else {
-                    $CFG->forced_plugin_settings['tool_recyclebin'] = $forced;
-                }
+            }
+        } finally {
+            if ($forced === null) {
+                unset($CFG->forced_plugin_settings['tool_recyclebin']);
+            } else {
+                $CFG->forced_plugin_settings['tool_recyclebin'] = $forced;
             }
         }
 

@@ -54,7 +54,7 @@ The plugin does nothing until it is enabled and pointed at a template course.
    | --- | --- | --- |
    | `enabled` | off | Master switch. When off, no presets are offered. |
    | `templatecourseid` | *(empty)* | The course holding the exemplar activities. |
-   | `maxpresets` | 100 | Cap on how many presets are offered at once. |
+   | `maxpresets` | 100 | Cap on how many presets are offered at once. At least 1; a lower value set outside the admin page falls back to 100. |
    | `datefields` | *(empty)* | Extra date fields for activity types the built-in scrub map does not cover, one `modname: field, field` pair per line. |
    | `preventmixing` | on | Lock a course to the first section template it uses. See [One template per course](#one-template-per-course). |
    | `ignoreinvalidtemplate` | on | Release a course whose recorded template has since been renamed or deleted. |
@@ -66,7 +66,9 @@ The plugin does nothing until it is enabled and pointed at a template course.
    It carries the configuration risk flag: releasing a preset changes what every teacher on the site is
    offered. Releasing one, or returning it as a draft, therefore needs the capability at system level,
    through a role assigned there; granted only in a course, it lets the holder try presets out in that
-   course but not decide on them.
+   course but not decide on them. The capability governs only the review buttons: anyone who can edit
+   activities in the template course can release a preset from its settings form - see
+   [Release status](#release-status).
 
 Upgrading from a version before 0.8.0 leaves behind the hidden course earlier versions used for test
 restores (short name `edpreset_restore_test` unless it was changed). Nothing uses it any more, and it
@@ -123,6 +125,13 @@ work on a preset without teachers picking it up half done.
 
 The status applies as soon as the settings form is saved, so moving a preset back to Draft or to
 Archived withdraws it at once.
+
+**Template-course editors are trusted to release.** Anyone who can edit an activity in the template
+course can set its preset to any status on the settings form, Released included, and so offer it to
+every teacher on the site. `mod/edpreset:reviewpresets` does not stand in the way: it governs only the
+**Release** and **Return as draft** buttons on the preset activities page (see
+[Reviewing presets](#reviewing-presets)), which are for reviewers who do not edit the template course.
+Give editing rights in the template course only to people trusted with that.
 
 To rework a released preset without teachers seeing the work in progress, **duplicate** the exemplar
 in the template course and change the copy. The copy arrives with the original's preset details,
@@ -583,29 +592,40 @@ After `execute_plan()` the copier:
 
 * finds the new `cmid` from the plan's sole `restore_activity_task`, before `dispose()` empties the
   task list;
+* clears `idnumber` (must be unique per course), `availability` (references template-course ids) and
+  `completionexpected` (never the date the teacher wants) — first, so that even a copy the clean-up
+  below fails to remove does not keep them;
 * places the activity explicitly with `moveto_module()`, creating the section if needed — the restore
   otherwise places it by matching the *exemplar's* section number;
-* clears `idnumber` (must be unique per course), `availability` (references template-course ids) and
-  `completionexpected` (never the date the teacher wants);
 * clears the copy's dates (see below), *before* the calendar is refreshed so the events are built from
   the cleared dates;
+* renames the activity to the preset's default name, after the dates (the rename refreshes the
+  calendar events itself) and before anything reads modinfo, since `set_coursemodule_name()` purges
+  and rebuilds the course cache — the same place `duplicate_module()` renames its copy;
 * rebuilds the course cache and calls `course_module_update_calendar_events()`;
 * fires `course_module_created` by hand, because the restore subsystem does not — without it,
-  completion, competencies and third-party observers never learn the activity exists;
-* renames the activity to the preset's default name *before* reading modinfo, since
-  `set_coursemodule_name()` purges and rebuilds the course cache.
+  completion, competencies and third-party observers never learn the activity exists.
 
 Teacher guidance embedded in the exemplar needs none of this: its tokens are in the exemplar's text
 and its blocks are in the activity's backup, so the restore brings both. `test_embedded_guidance_travels_with_a_copy()`
 pins that, since nothing in the copier would notice if it stopped being true.
 
-**A failed restore leaves nothing behind.** Nothing proves an exemplar restores before a teacher asks
+**A failed copy leaves nothing behind.** Nothing proves an exemplar restores before a teacher asks
 for it, so a restore that breaks part way breaks in their course. `remove_partial_restore()` finds the
 course module the restore had already created — the activity task records it as soon as it exists —
-and deletes it, with the recycle bin forced off for the length of the delete: a failed copy is not
-something the teacher deleted. A restore can stop before it has created the activity's own record,
-and `course_delete_module()` refuses to go on without one, so in that case the course module and its
-place in the section are removed directly.
+and `remove_copies()` deletes it, with the recycle bin forced off for the length of the delete: a
+failed copy is not something the teacher deleted. A restore can stop before it has created the
+activity's own record, and `course_delete_module()` refuses to go on without one, so in that case the
+course module and its place in the section are removed directly.
+
+A copy can also fail after its restore has worked: placing, renaming or refreshing it all happen once
+it is already in the course, and the teacher is told the preset could not be added. So every step from
+clearing the template-course specifics to the calendar refresh runs inside the same clean-up, and a
+failure there deletes the copy before the error goes on to the caller. A default name that only goes
+over core's 255 characters once the rename has cleaned it (see `meta::DEFAULTNAME_MAXLENGTH`) is the
+case `test_a_copy_that_fails_after_its_restore_leaves_nothing_behind()` uses. `course_module_created`
+is fired only once all of that has worked, and outside the clean-up: once observers have been told
+the activity exists, it is not the copier's to take away again.
 
 **A failed copy is recorded against the preset**, in `lasterror` and `timelasterror`, and shown on the
 manage page; the teacher is told only which preset could not be added. The next copy that works
@@ -669,9 +689,10 @@ failing the whole add for.
 | `rebuild_presets` | adhoc | queued by the observers, de-duplicated |
 | `reconcile_presets` | scheduled | 03:00 daily |
 
-Both only rescan (see [Scanning the template course](#scanning-the-template-course)). Content needs no
+Both rescan (see [Scanning the template course](#scanning-the-template-course)). Content needs no
 task at all — every copy takes a fresh backup — so the nightly reconcile is just a safety net for the
-preset records, catching any change to the template course an observer missed.
+preset records, catching any change to the template course an observer missed. It also sweeps
+orphaned preset details first (see below).
 
 Observers (`db/events.php`) cover `course_module_created`, `course_module_updated`,
 `course_module_deleted`, `course_section_updated` and `course_deleted`. All are declared
@@ -690,7 +711,11 @@ duplicate it misses simply has no preset details until the curator fills them in
 wrongly matches is given details as a draft, which is offered to nobody.
 
 `edpreset_meta` and `edpreset_item` rows are swept by the delete observers, because XMLDB foreign keys
-are not enforced by the database and nothing cascades them away.
+are not enforced by the database and nothing cascades them away. The observers act only on an
+activity deleted while the plugin is on and its course is the template course, so `reconcile_presets`
+also removes the preset details of any activity that no longer exists (`meta::delete_orphans()`),
+whatever the configuration. `edpreset_item` rows need no such sweep: every rescan removes those whose
+exemplar is gone.
 
 ### Concurrency and limits
 
@@ -707,6 +732,14 @@ handler and the tests. It requires `moodle/course:manageactivities` and
 `moodle/restore:restoretargetimport` on the target course, checks `course_allowed_module()`, and
 range-checks the section number against the format's maximum (the same guard core applies in
 `modedit.php`, MDL-69431).
+
+**The module a preset copies is not checked.** `course_allowed_module()` is asked about `edpreset`
+only, never about the exemplar's own module, so a role that may not add, say, External tool
+activities can still add a preset that is one. This is deliberate, and it is where presets differ from
+core's duplicate, which does check the module (`core_courseformat\stateactions::cm_duplicate()`): a
+preset is configuration the site has curated, and what decides whether teachers are offered it is its
+[release status](#release-status), not the module's own add capability. A site that keeps a module
+type from teachers keeps presets of that type unreleased.
 
 `local\access::can_use_template()` is the second gate, for section templates only: it is what
 refuses a restricted template (see *Restricted templates*). The chooser page uses it to leave such a
@@ -725,6 +758,8 @@ wherever its template could go (the restricted-template test above, applied to t
 course's context, read once per page or request and passed to whatever filters presets.
 `local\access::can_decide_reviews()` decides whether a review's outcome can be recorded, and checks the
 same capability at system level: trying a preset out touches one course, releasing it the whole site.
+It gates the review buttons only. The settings form in the template course sets any status without
+it, because template-course editors are trusted to release (see [Release status](#release-status)).
 
 Both `copy.php` and `chooser.php` call `require_sesskey()`. The chooser links are minted server-side
 per user, so carrying a sesskey costs nothing and closes CSRF on what is otherwise a state-changing
@@ -785,7 +820,10 @@ independent. A page star does one thing to the standard chooser: it adds the pre
 list there (see [Chooser integration](#chooser-integration)). It never becomes a core favourite, so
 it does not put the preset on the chooser's Starred tab. Both `create_favourite()` and `delete_favourite()`
 are guarded by an existence check, since core's are unguarded and a double-click would otherwise
-produce a 500.
+produce a 500. `set_favourite` stars only what the page offers a star for — a released preset of the
+template course that is not part of a section template — since a star puts the preset in the user's
+activity chooser. It unstars any preset of the template course, so a star on a preset withdrawn since
+it was given can still come off.
 
 The collapsed-group state is a user preference, `mod_edpreset_collapsed`, declared through
 `mod_edpreset_user_preferences()` — without which `core_user::get_preference_definition()` throws and

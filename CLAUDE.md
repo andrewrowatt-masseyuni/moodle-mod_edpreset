@@ -148,8 +148,9 @@ Nothing is stored between copies. There are two moving parts:
   `copy_activity()`: an import-mode backup of the exemplar **as the site admin**, straight into an
   import-mode restore as the teacher, then placement and tidying. The
   [scrubber](classes/local/scrubber.php) and its [rules](classes/local/scrub/) (date clearing) run on
-  the *restored copy*, before its calendar is refreshed. A restore that fails part way has its debris removed; the failure is
-  recorded on the preset for the manage page.
+  the *restored copy*, before its calendar is refreshed. A copy that fails part way - in the restore,
+  or in the tidying after it - has its debris removed; the failure is recorded on the preset for the
+  manage page.
 
 Two invariants worth holding in mind when touching this: what is offered is decided by
 `preset::is_offered()` from the curator's **release status** alone (released → everyone; review →

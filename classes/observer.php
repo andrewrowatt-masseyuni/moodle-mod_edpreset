@@ -156,8 +156,6 @@ class observer {
      * @param \core\event\course_deleted $event The event.
      */
     public static function course_deleted(\core\event\course_deleted $event): void {
-        global $DB;
-
         if (!template::is_template_course((int)$event->objectid)) {
             return;
         }
@@ -168,10 +166,7 @@ class observer {
 
         // Deleting a course removes its modules without necessarily leaving anything behind to
         // match on, so the preset details are swept by orphan-hood rather than by course.
-        $DB->delete_records_select(
-            meta::TABLE,
-            'cmid NOT IN (SELECT id FROM {course_modules})'
-        );
+        meta::delete_orphans();
     }
 
     /**

@@ -19,14 +19,16 @@ namespace mod_edpreset\task;
 use core\task\scheduled_task;
 use mod_edpreset\local\baker;
 use mod_edpreset\local\template;
+use mod_edpreset\meta;
 
 /**
- * Nightly safety net: rescan the template course.
+ * Nightly safety net: sweep orphaned preset details, then rescan the template course.
  *
  * Content needs no help - every copy takes a fresh backup of the exemplar, so a teacher always gets
  * the current version. This only catches the preset records up with any change to the template
- * course an event observer missed, such as a module moved by something that fires no event. It is
- * cheap: a rescan only rewrites the records.
+ * course an event observer missed, such as a module moved by something that fires no event, and
+ * removes the details of activities deleted where the observer was not listening. It is cheap: a
+ * rescan only rewrites the records.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -40,6 +42,13 @@ class reconcile_presets extends scheduled_task {
 
     #[\Override]
     public function execute(): void {
+        // First, and whatever the configuration: details are left behind by exemplars deleted while
+        // the plugin was off or the course was not the template course (see meta::delete_orphans()).
+        $orphans = meta::delete_orphans();
+        if ($orphans) {
+            mtrace(sprintf('mod_edpreset: %d orphaned preset details removed.', $orphans));
+        }
+
         if (!template::is_configured()) {
             mtrace('mod_edpreset: no template course configured, nothing to reconcile.');
             return;

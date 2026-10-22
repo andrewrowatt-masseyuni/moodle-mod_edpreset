@@ -112,6 +112,73 @@ final class external_test extends \advanced_testcase {
     }
 
     /**
+     * Only what the page offers a star for can be starred.
+     *
+     * A star puts a preset in the user's activity chooser, so starring a draft, one in review, a
+     * section template's activity or a stale preset from another course by hand must be refused.
+     *
+     * @dataProvider unstarrable_preset_provider
+     * @param array $record Overrides for the preset record.
+     * @param bool $othercourse Whether the preset belongs to a course that is not the template course.
+     */
+    public function test_set_favourite_refuses_a_preset_the_page_does_not_star(array $record, bool $othercourse): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $courseid = $othercourse ? $generator->create_course()->id : $templatecourse->id;
+        $preset = $plugingenerator->create_preset($record + ['templatecourseid' => $courseid, 'sectionnum' => 2]);
+
+        $this->setUser($generator->create_user());
+
+        try {
+            set_favourite::execute((int)$preset->get('id'), true);
+            $this->fail('the preset was starred');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('invalidpreset', $e->errorcode);
+        }
+        $this->assertSame([], chooser_page::get_favourited_ids());
+    }
+
+    /**
+     * Presets the page offers no star for.
+     *
+     * @return array
+     */
+    public static function unstarrable_preset_provider(): array {
+        return [
+            'draft' => [['status' => meta::STATUS_DRAFT], false],
+            'ready for review' => [['status' => meta::STATUS_REVIEW], false],
+            'archived' => [['status' => meta::STATUS_ARCHIVED], false],
+            'section template activity' => [['templatename' => 'Induction'], false],
+            'from another course' => [[], true],
+        ];
+    }
+
+    /**
+     * A star given before a preset was withdrawn can still be taken off.
+     */
+    public function test_set_favourite_unstars_a_withdrawn_preset(): void {
+        $this->resetAfterTest();
+        $generator = $this->getDataGenerator();
+        $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
+
+        $templatecourse = $plugingenerator->create_template_course();
+        $preset = $plugingenerator->create_preset(['templatecourseid' => $templatecourse->id, 'sectionnum' => 2]);
+        $presetid = (int)$preset->get('id');
+
+        $this->setUser($generator->create_user());
+        set_favourite::execute($presetid, true);
+
+        $preset->set('status', meta::STATUS_ARCHIVED);
+        $preset->update();
+
+        $this->assertSame(['favourite' => false], set_favourite::execute($presetid, false));
+        $this->assertSame([], chooser_page::get_favourited_ids());
+    }
+
+    /**
      * A course with a reviewer in it, and a preset ready for review.
      *
      * The reviewer holds the capability across the site, as deciding a review needs: they are a

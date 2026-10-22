@@ -276,7 +276,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetname', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetname_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             ['maxlength' => \mod_edpreset\meta::PRESETNAME_MAXLENGTH, 'size' => 60]
         ),
@@ -286,7 +286,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetdescription', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetdescription_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             ['rows' => 5],
             $editoroptions
@@ -297,7 +297,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presettags', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presettags_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             ['size' => 60]
         ),
@@ -307,7 +307,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetdefaultname', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetdefaultname_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             ['maxlength' => \mod_edpreset\meta::DEFAULTNAME_MAXLENGTH, 'size' => 60]
         ),
@@ -317,7 +317,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetrecommendedsection', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetrecommendedsection_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             ['maxlength' => \mod_edpreset\meta::RECOMMENDEDSECTION_MAXLENGTH, 'size' => 60]
         ),
@@ -327,7 +327,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetstatus', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetstatus_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             ),
             edpreset_get_status_options()
         ),
@@ -337,7 +337,7 @@ function mod_edpreset_coursemodule_standard_elements($formwrapper, $mform) {
             get_string('presetshowinchooser', 'mod_edpreset')
             . \html_writer::span(
                 get_string('presetshowinchooser_help', 'mod_edpreset'),
-                'edpreset-field-desc d-block small text-muted fw-normal'
+                'edpreset-field-desc d-block small text-muted font-weight-normal'
             )
         ),
     ];

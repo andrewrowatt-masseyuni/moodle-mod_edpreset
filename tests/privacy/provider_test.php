@@ -106,8 +106,10 @@ final class provider_test extends \core_privacy\tests\provider_testcase {
         $generator = $this->getDataGenerator();
         $plugingenerator = $generator->get_plugin_generator('mod_edpreset');
 
-        $starred = $plugingenerator->create_preset(['title' => 'Starred preset']);
-        $plugingenerator->create_preset(['title' => 'Unstarred preset']);
+        // In the template course, since set_favourite stars only a preset the page could offer.
+        $templatecourse = $plugingenerator->create_template_course();
+        $starred = $plugingenerator->create_preset(['title' => 'Starred preset', 'templatecourseid' => $templatecourse->id]);
+        $plugingenerator->create_preset(['title' => 'Unstarred preset', 'templatecourseid' => $templatecourse->id]);
 
         $user = $generator->create_user();
         $this->setUser($user);
