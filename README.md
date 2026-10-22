@@ -338,9 +338,10 @@ for the user following it.
 #### The theme_snap section menu
 
 On [theme_snap](https://moodle.org/plugins/theme_snap) each section's `⋮` **extra actions** menu
-carries an **Apply template** item built on that link. Snap has no extension point for the menu, so
-the theme needs a patch - deliberately the smallest one that works, because Snap is vendor code that
-an upgrade replaces wholesale.
+can carry an **Apply template** item built on that link. Snap has no extension point for the menu, so
+the item needs a patch to the theme. The patch is optional: a site can run Snap without it and lose
+nothing but the item. It is deliberately the smallest one that works, because Snap is vendor code
+that an upgrade replaces wholesale.
 
 In `theme/snap/classes/output/format_section_trait.php`, in `section_edit_control_items()`,
 **immediately after** the `foreach` that renders each action into `$controls` and before the
@@ -366,10 +367,14 @@ load-bearing:
 
 `section_action::for_snap()` returns objects shaped for `theme_snap/course_action_section`: public
 `title`, `url`, `class`, `ariapressed`, `arialabel` and `isinmenu`, with the two aria properties
-being whole attribute strings rather than values, as Snap's own renderables build them. A Snap
-upgrade that changes that template or `section_edit_control_items()` drops the patch, and the item
-simply stops appearing - `tests/snap_section_menu_test.php` is what notices, and the patch above is
-what to reapply.
+being whole attribute strings rather than values, as Snap's own renderables build them.
+
+A Snap upgrade replaces `format_section_trait.php`, which drops the patch, and the item silently
+stops appearing. `tests/snap_section_menu_test.php` skips rather than fails on an unpatched theme,
+because from the file alone a lost patch looks the same as one that was never applied. On a site
+that uses the patch, then, a skip after a theme upgrade with the reason *installed without the
+mod_edpreset patch* means the patch above needs reapplying. If the patch is still there but the
+upgrade changed `section_edit_control_items()` or the template, the test fails.
 
 ## Technical details
 
@@ -911,8 +916,9 @@ vendor/bin/phpunit --testsuite mod_edpreset_testsuite
 
 `tests/snap_section_menu_test.php` is the odd one out: it renders a section's controls through
 theme_snap's own renderer to check that the **Apply template** item is really in the dropdown, which
-is the only automated guard on the theme patch described above. It skips itself where theme_snap is
-not installed, CI included - the plugin does not depend on the theme.
+is the only automated guard on the theme patch described above. It skips itself unless theme_snap is
+installed *and* patched, so it skips in CI because the plugin depends on neither. On a patched site, a
+skip is how a lost patch shows up (see above).
 
 Behat covers section templates in `tests/behat/section_templates.feature`, and who is offered what in
 `tests/behat/release_status.feature`. Two things about them are worth knowing before adding to them:

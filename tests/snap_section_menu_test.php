@@ -21,10 +21,14 @@ use mod_edpreset\local\section_action;
 /**
  * Tests that theme_snap's section menu really carries the "Apply template" item.
  *
- * The item depends on a two-line patch to vendor code that a theme upgrade replaces wholesale
- * (README.md, "The theme_snap section menu"), so the point of this test is to notice when that
- * patch has gone - which nothing else would. It skips where theme_snap is not installed, which
- * includes CI: the plugin does not depend on the theme.
+ * The item depends on a two-line patch to vendor code (README.md, "The theme_snap section menu").
+ * The patch is optional, so these tests skip unless theme_snap is installed and carries it - which
+ * leaves out CI, since the plugin depends on neither. Where the patch is there, they check that it
+ * still puts the item in the dropdown, in the shape the theme's template reads.
+ *
+ * A theme upgrade replaces the patched file wholesale, and from here that looks exactly like a site
+ * that never applied the patch. So a lost patch shows up as a skip rather than a failure, and the
+ * skip message says so.
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
@@ -33,7 +37,7 @@ use mod_edpreset\local\section_action;
  */
 final class snap_section_menu_test extends \advanced_testcase {
     /**
-     * Skip unless theme_snap is installed on this site.
+     * Skip unless theme_snap is installed on this site and carries the patch.
      */
     public function setUp(): void {
         global $CFG;
@@ -41,8 +45,14 @@ final class snap_section_menu_test extends \advanced_testcase {
         parent::setUp();
         section_action::reset_caches();
 
-        if (!file_exists($CFG->dirroot . '/theme/snap/classes/output/format_section_trait.php')) {
+        $trait = $CFG->dirroot . '/theme/snap/classes/output/format_section_trait.php';
+        if (!file_exists($trait)) {
             $this->markTestSkipped('theme_snap is not installed.');
+        }
+        // Any form of the patch has to call this method, however it is written.
+        if (!str_contains(file_get_contents($trait), 'section_action::for_snap(')) {
+            $this->markTestSkipped('theme_snap is installed without the mod_edpreset patch. If this site had it, '
+                . 'a theme upgrade has removed it: see README.md, "The theme_snap section menu".');
         }
     }
 

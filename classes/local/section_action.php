@@ -26,8 +26,8 @@ use stdClass;
  * theme_snap's per-section menu has no extension point, so the theme carries a two-line call to
  * this class and everything else - the label, the link, the icon and the access checks - lives
  * here. That keeps the edit to vendor code small enough to reapply after a theme upgrade, and it
- * means a site without the theme loses nothing but the menu item. See README.md, "Linking straight
- * to the section templates".
+ * means a site without the theme, or with the theme unpatched, loses nothing but the menu item. See
+ * README.md, "Linking straight to the section templates".
  *
  * @package    mod_edpreset
  * @copyright  2026 Andrew Rowatt <A.J.Rowatt@massey.ac.nz>
