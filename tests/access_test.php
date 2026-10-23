@@ -240,6 +240,8 @@ final class access_test extends \advanced_testcase {
         [$course, , , $teacher, $template] = $this->setup_restricted();
         $this->setUser($teacher);
 
+        // The PHPUnit site is installed without the field (see db/install.php).
+        coursedefault::install();
         coursedefault::set((int)$course->id, 'Learning model');
 
         $this->assertTrue(access::can_use_template($course, $template));

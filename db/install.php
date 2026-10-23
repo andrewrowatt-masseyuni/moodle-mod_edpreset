@@ -34,7 +34,11 @@
  * @return bool
  */
 function xmldb_edpreset_install() {
-    \mod_edpreset\local\coursedefault::install();
+    // Not on the PHPUnit site. Core's custom field tests assume the course area starts empty, so the
+    // field would fail them on any site with this plugin installed. Tests that need it create it.
+    if (!PHPUNIT_TEST) {
+        \mod_edpreset\local\coursedefault::install();
+    }
 
     return true;
 }

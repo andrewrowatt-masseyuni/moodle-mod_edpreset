@@ -174,7 +174,8 @@ class coursedefault {
     /**
      * Create the field, unless this site already has it.
      *
-     * Called from db/install.php. Idempotent, because shortnames are unique per handler and a second
+     * Called from db/install.php, and by the tests that need the field, since the PHPUnit site is
+     * installed without it. Idempotent, because shortnames are unique per handler and a second
      * attempt would fail rather than no-op.
      *
      * @return field_controller|null The field, or null if it could not be created.

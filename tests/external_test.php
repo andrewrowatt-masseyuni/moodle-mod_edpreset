@@ -352,7 +352,9 @@ final class external_test extends \advanced_testcase {
             'templaterestricted' => 1,
         ]);
 
-        // A course that has used the template gets its activities.
+        // A course that has used the template gets its activities. The PHPUnit site is installed
+        // without the field that records it (see db/install.php).
+        coursedefault::install();
         $used = $generator->create_course(['numsections' => 2]);
         coursedefault::set((int)$used->id, 'Learning model');
         $this->setUser($generator->create_and_enrol($used, 'editingteacher'));

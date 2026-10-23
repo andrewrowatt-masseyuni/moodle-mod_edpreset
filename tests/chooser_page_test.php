@@ -244,6 +244,8 @@ final class chooser_page_test extends \advanced_testcase {
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
         $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+        // The PHPUnit site is installed without the field (see db/install.php).
+        \mod_edpreset\local\coursedefault::install();
         \mod_edpreset\local\coursedefault::set((int)$course->id, 'Learning model');
 
         $data = $this->export(true, $course);
@@ -399,6 +401,8 @@ final class chooser_page_test extends \advanced_testcase {
 
         $course = $this->getDataGenerator()->create_course(['numsections' => 2]);
         $this->setUser($this->getDataGenerator()->create_and_enrol($course, 'editingteacher'));
+        // The PHPUnit site is installed without the field (see db/install.php).
+        \mod_edpreset\local\coursedefault::install();
         \mod_edpreset\local\coursedefault::set((int)$course->id, 'Weekly cycle');
 
         $groups = $this->groups_by_name($this->export(false, $course));
@@ -445,6 +449,8 @@ final class chooser_page_test extends \advanced_testcase {
             array_keys($this->groups_by_name($this->export(false, $course)))
         );
 
+        // The PHPUnit site is installed without the field (see db/install.php).
+        \mod_edpreset\local\coursedefault::install();
         \mod_edpreset\local\coursedefault::set((int)$course->id, 'Weekly cycle');
         $this->assertSame(
             [get_string('chooser:sectiontemplates', 'mod_edpreset')],

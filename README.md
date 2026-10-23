@@ -848,6 +848,12 @@ not have the field. Every read and write therefore looks it up by shortname firs
 when it is absent, and the write swallows its own errors — by the time it runs the activities are
 already in the section, so throwing would report a failure that did not happen.
 
+The PHPUnit site is **installed without the field**: `xmldb_edpreset_install()` skips it when
+`PHPUNIT_TEST` is set. Core's own custom field tests (`core_customfield_testsuite`) assume the course
+area starts with no categories, so five of them failed on any site with this plugin installed. The
+plugin's tests that need the field call `coursedefault::install()` themselves. Behat's site is
+installed normally and has it.
+
 Reading it needs `get_instance_data($courseid, true)`. Without the `$returnall` flag,
 `get_visible_fields()` filters an invisible field straight back out.
 
@@ -913,6 +919,10 @@ moment, just after the course module exists.
 ```
 vendor/bin/phpunit --testsuite mod_edpreset_testsuite
 ```
+
+A test that records a course's section template must call `coursedefault::install()` first. The
+PHPUnit site has no **Default section template** field (see its section above), and without it
+`coursedefault::set()` does nothing, so the test would quietly check the wrong thing.
 
 `tests/snap_section_menu_test.php` is the odd one out: it renders a section's controls through
 theme_snap's own renderer to check that the **Apply template** item is really in the dropdown, which
